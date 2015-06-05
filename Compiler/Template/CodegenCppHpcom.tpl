@@ -86,10 +86,6 @@ template translateModel(SimCode simCode)
       let alg = algloopfiles(listAppend(allEquations,initialEquations), simCode, &extraFuncs, &extraFuncsDecl, "", contextAlgloop, stateDerVectorName, false)
       let() = textFile(algloopMainfile(listAppend(allEquations,initialEquations), simCode, &extraFuncs, &extraFuncsDecl, "", contextAlgloop), 'OMCpp<%fileNamePrefix%>AlgLoopMain.cpp')
       let() = textFile(calcHelperMainfile(simCode, &extraFuncs, &extraFuncsDecl, ""), 'OMCpp<%fileNamePrefix%>CalcHelperMain.cpp')
-      let() = textFile(calcHelperMainfile2(simCode, &extraFuncs, &extraFuncsDecl, ""), 'OMCpp<%fileNamePrefix%>CalcHelperMain2.cpp')
-      let() = textFile(calcHelperMainfile3(simCode, &extraFuncs, &extraFuncsDecl, ""), 'OMCpp<%fileNamePrefix%>CalcHelperMain3.cpp')
-      let() = textFile(calcHelperMainfile4(simCode, &extraFuncs, &extraFuncsDecl, ""), 'OMCpp<%fileNamePrefix%>CalcHelperMain4.cpp')
-      let() = textFile(calcHelperMainfile5(simCode, &extraFuncs, &extraFuncsDecl, ""), 'OMCpp<%fileNamePrefix%>CalcHelperMain5.cpp')
       ""
       // empty result of the top-level template .., only side effects
   end match
@@ -125,8 +121,12 @@ template generateAdditionalIncludesForParallelCode(SimCode simCode, Text& extraF
       <<
       #include <tbb/tbb.h>
       #include <tbb/flow_graph.h>
+	  #include <tbb/tbb_stddef.h>
       #include <boost/function.hpp>
       #include <boost/bind.hpp>
+      #if TBB_INTERFACE_VERSION >= 8000
+      #include <tbb/task_arena.h>
+      #endif
       >>
     case ("mpi") then // MF: mpi.h
       <<
@@ -204,6 +204,32 @@ template generateAdditionalStructHeaders(Schedule odeSchedule)
               void_function();
             }
           };
+          #if TBB_INTERFACE_VERSION >= 8000
+          struct TbbArenaFunctor
+          {
+          	tbb::flow::graph * g;
+          	tbb::flow::broadcast_node<tbb::flow::continue_msg> * sn;
+
+          	TbbArenaFunctor( )
+          	{
+          		g = NULL;
+          		sn = NULL;
+          	}
+
+          	TbbArenaFunctor( tbb::flow::graph & in_g , tbb::flow::broadcast_node<tbb::flow::continue_msg> & in_sn )
+          	{
+          		g = &in_g;
+          		sn = &in_sn;
+          	}
+
+          	void operator()()
+          	{
+          		sn->try_put( tbb::flow::continue_msg() );
+          		g->wait_for_all();
+          	}
+
+          };
+          #endif
           >>
         else ""
       end match
@@ -332,6 +358,10 @@ template generateAdditionalHpcomVarHeaders(Option<tuple<Schedule,Schedule>> sche
           tbb::flow::broadcast_node<tbb::flow::continue_msg> _tbbStartNode;
           std::vector<tbb::flow::continue_node<tbb::flow::continue_msg>* > _tbbNodeList_ODE;
           std::vector<tbb::flow::continue_node<tbb::flow::continue_msg>* > _tbbNodeList_DAE;
+          #if TBB_INTERFACE_VERSION >= 8000
+          tbb::task_arena _tbbArena;
+          TbbArenaFunctor _tbbArenaFunctor;
+          #endif
           >>
         else ""
       end match
@@ -425,6 +455,7 @@ template generateAdditionalConstructorBodyStatements(Option<tuple<Schedule,Sched
         case ("openmp") then
           let threadFuncs = arrayList(odeSchedule.threadTasks) |> tt hasindex i0 fromindex 0 => generateThread(i0, type, modelNamePrefixStr,"evaluateThreadFunc"); separator="\n"
           <<
+          omp_set_dynamic(0);
           <%threadFuncs%>
           <%initlocksOde%>
           <%initlocksDae%>
@@ -748,7 +779,6 @@ template generateParallelEvaluate(list<SimEqSystem> allEquationsPlusWhen, Absyn.
           {
             this->_evaluateODE = evaluateODE;
             this->_command = command;
-            omp_set_dynamic(1);
             <%&varDecls%>
             if(_evaluateODE)
             {
@@ -770,8 +800,12 @@ template generateParallelEvaluate(list<SimEqSystem> allEquationsPlusWhen, Absyn.
           <%functionHead%>
           {
             //Start
+          #if TBB_INTERFACE_VERSION >= 8000
+			_tbbArena.execute(_tbbArenaFunctor);
+          #else
             _tbbStartNode.try_put(tbb::flow::continue_msg());
             _tbbGraph.wait_for_all();
+          #endif
             //End
           }
           >>
@@ -975,6 +1009,10 @@ template generateTbbConstructorExtension(list<tuple<Task,list<Integer>>> odeTask
   tbb::flow::continue_node<tbb::flow::continue_msg> *tbb_task;
   <%odeNodesAndEdges%>
   <%daeNodesAndEdges%>
+  #if TBB_INTERFACE_VERSION >= 8000
+  _tbbArena = tbb::task_arena(<%getConfigInt(NUM_PROC)%>);
+  _tbbArenaFunctor = TbbArenaFunctor(_tbbGraph,_tbbStartNode);
+  #endif
   >>
 end generateTbbConstructorExtension;
 
@@ -1032,28 +1070,30 @@ template function_HPCOM_Thread(list<SimEqSystem> allEquationsPlusWhen, array<lis
       let threadReleaseLocksDae = arrayList(threadTasksOde) |> tt hasindex i0 fromindex 0 => function_HPCOM_releaseThreadLocks(arrayGet(threadTasksDae, intAdd(i0, 1)), "_lockDae", i0, iType); separator="\n"
 
       <<
-      if (omp_get_dynamic())
-        omp_set_dynamic(0);
       #pragma omp parallel num_threads(<%arrayLength(threadTasksOde)%>)
       {
          int threadNum = omp_get_thread_num();
 
-         //Assign locks first
-         <%threadAssignLocksOde%>
-         <%threadAssignLocksDae%>
-         #pragma omp barrier
          if(_evaluateODE)
          {
+           //Assign locks first
+           <%threadAssignLocksOde%>
+           #pragma omp barrier
            <%odeEqs%>
+           //Release locks after calculation
+           #pragma omp barrier
+           <%threadReleaseLocksOde%>
          }
          else
          {
+           //Assign locks first
+           <%threadAssignLocksDae%>
+           #pragma omp barrier
            <%daeEqs%>
+           //Release locks after calculation
+           #pragma omp barrier
+           <%threadReleaseLocksDae%>
          }
-         #pragma omp barrier
-         //Release locks after calculation
-         <%threadReleaseLocksOde%>
-         <%threadReleaseLocksDae%>
       }
       >>
     case ("mpi") then
