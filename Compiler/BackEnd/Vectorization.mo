@@ -74,6 +74,7 @@ protected
   list<tuple<DAE.ComponentRef,Integer,list<DAE.ComponentRef>>> arrayCrefs; //headCref, range, tailcrefs
   list<BackendDAE.Var> varLst, arrayVars;
   list<BackendDAE.Equation> classEqs,mixEqs,nonArrEqs;
+  list<DAE.ComponentRef> scalarCrefs;
 algorithm
     //BackendDump.dumpEquationList(eqsIn,"eqsIn");
     //BackendDump.dumpVariables(varsIn,"varsIn");
@@ -95,7 +96,7 @@ algorithm
     //BackendDump.dumpEquationList(mixEqs,"mixEqs");
     //BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs");
 
-  if true then
+  if false then
 
   //add loopinfos
   (idx,classEqs) := addLoopInfosForClassEqs(classEqs, List.map(arrayCrefs,Util.tuple31), (1,{}));
@@ -120,28 +121,174 @@ algorithm
   varsOut := BackendVariable.listVar1(varLst);
 
   else
-    //build for equations for repeated equations 
+    //build for equations for repeated equations
     classEqs := buildBackendDAEForEquations(classEqs,{});
-    
+
     //find accumulated equations in mixEqs and insert SUM-Exp
     mixEqs := listReverse(List.fold(mixEqs,buildAccumExpInEquations,{}));
-    
+
     //BackendDump.dumpEquationList(classEqs,"classEqs2");
-    //BackendDump.dumpEquationList(mixEqs,"mixEqs2");    
+    //BackendDump.dumpEquationList(mixEqs,"mixEqs2");
     //BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs");
-    
+
     // build non-expanded arrays
     arrayVars := unexpandArrayVariables(arrayVars,{});
-    varsOut := BackendVariable.listVar1(listAppend(varLst,arrayVars));
     eqsOut := listAppend(listAppend(nonArrEqs,listAppend(classEqs,mixEqs)));
-    
-    //BackendDump.dumpEquationList(eqsOut,"eqsOut");
-    //BackendDump.dumpVariables(varsOut,"varsOut");
+
+    //get scalar crefs and slice var arrays accordingly
+    scalarCrefs := List.fold(mixEqs,getScalarArrayCrefsFromEquation,{});
+    arrayVars := List.fold(scalarCrefs,sliceArrayVarsForCref,arrayVars);
+
+    varLst := listAppend(varLst,arrayVars);
+    varsOut := BackendVariable.listVar1(varLst);
+
+    BackendDump.dumpEquationList(eqsOut,"eqsOut");
+    BackendDump.dumpVariables(varsOut,"varsOut");
   end if;
 end buildForLoops;
 
+
 //-----------------------------------------------
-// The implementation to get a DAE with for BackendDAE.FOR_EQUATION, unexpanded array vars.
+// Slice the unexpanded array vars according to the occurence of concrete indexed elements in the mixed equations
+//-----------------------------------------------
+
+protected function sliceArrayVarsForCref"fold function to slice out the cref from the arrayVar"
+  input DAE.ComponentRef crefIn;
+  input list<BackendDAE.Var> varsIn;
+  output list<BackendDAE.Var> varsOut;
+protected
+  Integer pos;
+  BackendDAE.Var var;
+  list<BackendDAE.Var> addVars, vars;
+algorithm
+  pos := List.position1OnTrue(varsIn,varIsEqualCrefWithoutSubs,crefIn);
+  var := listGet(varsIn,pos);
+  (var,addVars) := sliceArrayVarsForCref1(var,crefIn);
+  vars := List.replaceAt(var,pos,varsIn);
+  varsOut := listAppend(vars,addVars);
+end sliceArrayVarsForCref;
+
+
+protected function sliceArrayVarsForCref1"fold function to slice out the cref from the arrayVar.
+the returned var is the single indexed var, the addVars are the partially sliced rest arrays"
+  input BackendDAE.Var varIn;
+  input DAE.ComponentRef crefIn;
+  output BackendDAE.Var varOut;
+  output list<BackendDAE.Var> addVars;
+algorithm
+  (varOut,addVars) := matchcontinue(varIn,crefIn)
+    local
+      Integer dim, idx;
+      list<Integer> idxRange;
+      BackendDAE.Var var;
+      DAE.ComponentRef cref;
+      DAE.Subscript sub;
+      list<DAE.ComponentRef> slicedCrefs;
+      list<BackendDAE.Var> slicedVars;
+      list<DAE.Subscript> subs;
+  case(BackendDAE.VAR(varName=cref),_)
+    equation
+      // slice a wholedim
+      {DAE.WHOLEDIM()} = ComponentReference.crefSubs(cref);
+      {DAE.DIM_INTEGER(dim)} = ComponentReference.crefDims(cref);
+      {DAE.INDEX(DAE.ICONST(idx))} = ComponentReference.crefSubs(crefIn); 
+      idxRange = List.deleteMember(List.intRange(dim),idx);
+      subs = List.fold1(idxRange,makeSliceSubscripts,ComponentReference.crefType(crefIn),{});// a list of slice subs
+      slicedCrefs = List.map1r(List.map(subs,List.create),replaceFirstSubsInCref,cref);
+      slicedVars = List.map1(slicedCrefs,BackendVariable.createVar,"");
+      var = BackendVariable.createVar(crefIn,"");
+    then (var,slicedVars);
+  else
+    equation
+      print("missing case in sliceArrayVarsForCref1\n");
+    then fail();
+  end matchcontinue;
+end sliceArrayVarsForCref1;
+
+protected function makeSliceSubscripts"fold function that makes DAE.SLICE() subscripts from an ordered list of indexes"
+  input Integer idx;
+  input DAE.Type tyIn;
+  input list<DAE.Subscript> subsIn;
+  output list<DAE.Subscript> subsOut;
+algorithm
+  subsOut := matchcontinue(idx,tyIn,subsIn)
+    local
+      Integer start,stop;
+      DAE.Type ty;
+      list<DAE.Subscript> rest;
+      
+  case(_,_,{})
+    equation
+    //start a new slice
+  then {DAE.SLICE(DAE.RANGE(tyIn,DAE.ICONST(idx),NONE(),DAE.ICONST(idx)))};
+    
+  case(_,_,DAE.SLICE(DAE.RANGE(ty=ty,start=DAE.ICONST(start),step=NONE(),stop=DAE.ICONST(stop)))::rest)
+    equation
+    //extend slice
+    true = intEq(idx,stop+1);
+  then (DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start),NONE(),DAE.ICONST(idx)))::rest);
+
+  case(_,_,DAE.SLICE(DAE.RANGE(ty=ty,start=DAE.ICONST(start),step=NONE(),stop=DAE.ICONST(stop)))::rest)
+    equation
+    //start an interrupted slice
+    true = intGt(idx,stop+1);
+  then (DAE.SLICE(DAE.RANGE(tyIn,DAE.ICONST(idx),NONE(),DAE.ICONST(idx)))::subsIn);
+    
+  else
+    equation
+      print("missing case in makeSliceSubscripts\n");
+    then fail();
+  end matchcontinue;
+end makeSliceSubscripts;
+
+
+protected function getScalarArrayCrefsFromEquation"fold function to collect scalar crefs from equations"
+  input BackendDAE.Equation eqIn;
+  input list<DAE.ComponentRef> crefsIn;
+  output list<DAE.ComponentRef> crefsOut;
+protected
+  list<DAE.ComponentRef> crefs;
+algorithm
+  (_,crefs) := BackendEquation.traverseExpsOfEquation(eqIn,getScalarArrayCrefsFromExp,{});
+  crefsOut := List.unique(listAppend(crefs,crefsIn));
+end getScalarArrayCrefsFromEquation;
+
+
+protected function getScalarArrayCrefsFromExp"exp traverse function to collect scalar crefs from expressions"
+  input DAE.Exp expIn;
+  input list<DAE.ComponentRef> crefsIn;
+  output DAE.Exp expOut;
+  output list<DAE.ComponentRef> crefsOut;
+algorithm
+  (expOut,crefsOut) := matchcontinue(expIn,crefsIn)
+    local
+      DAE.ComponentRef cref;
+      DAE.Exp exp1, exp2;
+      list<DAE.ComponentRef> crefs;
+  case(DAE.CREF(componentRef= cref),_)
+    equation
+      true = ComponentReference.crefHaveSubs(cref); // why is crefHasScalarSubscripts() true for crefs without subs
+      true = ComponentReference.crefHasScalarSubscripts(cref);
+    then (expIn,(cref::crefsIn));
+  case(DAE.UNARY(exp=exp1),_)
+    equation
+      (_,crefs) = getScalarArrayCrefsFromExp(exp1,crefsIn);
+    then (expIn,crefs);
+  case(DAE.BINARY(exp1=exp1,exp2=exp2),_)
+    equation
+      (_,crefs) = getScalarArrayCrefsFromExp(exp1,crefsIn);
+      (_,crefs) = getScalarArrayCrefsFromExp(exp2,crefs);
+    then (expIn,crefs);
+  case(DAE.SUM(),_)
+    then (expIn,crefsIn);
+  else
+    then (expIn,crefsIn);
+  end matchcontinue;
+end getScalarArrayCrefsFromExp;
+
+
+//-----------------------------------------------
+// The implementation to get a DAE with BackendDAE.FOR_EQUATION and unexpanded array vars.
 //-----------------------------------------------
 
 protected function unexpandArrayVariables"build non-expanded var arrays"
@@ -198,7 +345,7 @@ algorithm
       allTerms := Expression.allTerms(lhs);
       minmaxTerms := List.fold(allTerms,buildAccumExpInEquations1,{});
       {lhs} := buildAccumExpInEquations2(listReverse(minmaxTerms),{});
-      
+
       //handle right hand side
       allTerms := Expression.allTerms(rhs);
       minmaxTerms := List.fold(allTerms,buildAccumExpInEquations1,{});
@@ -231,7 +378,7 @@ algorithm
 	  // an already collected array cref term
 	  (term,min,max) := listGet(minmaxTermsIn,pos);
 	  {DAE.INDEX(DAE.ICONST(idx))} := ComponentReference.crefSubs(cref);
-	  minmaxTermsOut := (term,intMin(idx,min),intMax(idx,max))::minmaxTermsIn;
+	  minmaxTermsOut := List.replaceAt((term,intMin(idx,min),intMax(idx,max)),pos,minmaxTermsIn);
 	  end if;
 	else
     minmaxTermsOut := (termIn,-1,-1)::minmaxTermsIn;
@@ -371,7 +518,7 @@ protected
 algorithm
   (cref,min1,max1) := crefInfo;
   (min0,max0) := minmaxIn;
-  if intEq(min0,-1) then min0 := min1;  end if;  
+  if intEq(min0,-1) then min0 := min1;  end if;
   min := intMin(min0,min1);
   minmaxOut := (min, intMin(max1,min+range-1));
 end getIterationRangesForCrefs;
