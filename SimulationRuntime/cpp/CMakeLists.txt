@@ -14,14 +14,13 @@
 #     if profiling for the simulation runtime should be enabled                    -DRUNTIME_PROFILING
 #
 # Some of these options can be controlled by passing arguments to CMAKE
-#     if all runtime libraries should be built and linked statically               -DRUNTIME_STATIC_LINKING=ON
 #     if write output should be handled in parallel                                -DUSE_PARALLEL_OUTPUT=ON
 #     if ScoreP should be used for performance analysis                            -DUSE_SCOREP=ON
 #     if the boost libraries should be linked statically                           -DBOOST_STATIC_LINKING=ON
 #     if the lapack functions and data structurs of sundials should be used        -DSUNDIALS_LAPACK=ON
 #     if boost libraries should be linked against absolute path libraries          -DUSE_BOOST_REALPATHS=ON
 #
-#     Example: "cmake -DRUNTIME_STATIC_LINKING=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo" to create statically linked libraries
+#     Example: "cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo" to create statically linked libraries
 #
 # The used defines are stored in the SYSTEM_CFLAGS variable, which is passed to the ModelicaConfig.inc and written in the PrecompiledHeader.cmake
 
@@ -33,13 +32,12 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 MESSAGE(STATUS "CMake version ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}.${CMAKE_PATCH_VERSION}")
 
 #Set Options
-OPTION(RUNTIME_STATIC_LINKING "RUNTIME_STATIC_LINKING" OFF)
 OPTION(USE_PARALLEL_OUTPUT "USE_PARALLEL_OUTPUT" OFF)
 OPTION(USE_SCOREP "USE_SCOREP" OFF)
 OPTION(BOOST_STATIC_LINKING "BOOST_STATIC_LINKING" OFF)
 OPTION(RUNTIME_PROFILING "RUNTIME_PROFILING" OFF)
 OPTION(SUNDIALS_ROOT "SUNDIALS ROOT" "")
-
+OPTION(BUILD_DOCUMENTATION "Use Doxygen to create the cpp runtime documentation" OFF)
 
 #Set Variables
 SET(MODELICAEXTERNALCDIR  "${CMAKE_SOURCE_DIR}/../../3rdParty/ModelicaExternalC/C-Sources")
@@ -101,14 +99,6 @@ ELSE(NOT BOOST_STATIC_LINKING)
   SET(Boost_USE_STATIC_RUNTIME ON)
   ADD_DEFINITIONS(-DBOOST_STATIC_LINKING)
 ENDIF(NOT BOOST_STATIC_LINKING)
-
-# Handle static linking
-IF(NOT RUNTIME_STATIC_LINKING)
-  MESSAGE(STATUS "Static build and linking of runtime disabled")
-ELSE(NOT RUNTIME_STATIC_LINKING)
-  MESSAGE(STATUS "Build and linking runtime statically")
-  ADD_DEFINITIONS(-DRUNTIME_STATIC_LINKING)
-ENDIF(NOT RUNTIME_STATIC_LINKING)
 
 # Handle sundials lapack
 IF(NOT SUNDIALS_LAPACK)
@@ -300,6 +290,7 @@ IF(USE_SUNDIALS)
   IF (NOT SUNDIALS_INCLUDE_DIR)
     MESSAGE(FATAL_ERROR "Could not find Sundials, specify environment variable SUNDIALS_ROOT")
   ELSE(NOT SUNDIALS_INCLUDE_DIR)
+    # Extract the version number from sundials_config.h
     FIND_PATH(SUNDIALS_CONFIG_FILE "sundials_config.h" ${SUNDIALS_INCLUDE_DIR} "${SUNDIALS_INCLUDE_DIR}/sundials")
     SET(SUNDIALS_CONFIG_FILE "${SUNDIALS_CONFIG_FILE}/sundials_config.h")
     FILE(READ "${SUNDIALS_CONFIG_FILE}" SUNDIALS_CONFIG_FILE_CONTENT)
@@ -354,6 +345,28 @@ IF(USE_SUNDIALS)
     INSTALL(FILES ${SUNDIALS_LIBRARIES} DESTINATION bin)
   ENDIF(WIN32)
 ENDIF(USE_SUNDIALS)
+
+#-- generate documentation of cpp runtime with doxygen
+if(BUILD_DOCUMENTATION)
+  FIND_PACKAGE(Doxygen)
+  if (NOT DOXYGEN_FOUND)
+    message(FATAL_ERROR
+      "Doxygen is needed to build the documentation. Please install it correctly")
+  endif()
+   MESSAGE(STATUS "Build the documentation with Doxygen")
+  #-- Configure the Template Doxyfile for our specific project
+  configure_file(cppruntimedoc.config.in
+                 ${PROJECT_BINARY_DIR}/cppruntimedoc.config  @ONLY IMMEDIATE)
+  #-- Add a custom target to run Doxygen when ever the project is built
+  add_custom_target (Docs ALL
+                     ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/cppruntimedoc.config
+                     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                     COMMENT "Generating API documentation with Doxygen" VERBATIM
+                    )
+  # IF you do NOT want the documentation to be generated EVERY time you build the project
+  # then leave out the 'ALL' keyword from the above command.
+endif()
+
 
 
 #Handle umfpack

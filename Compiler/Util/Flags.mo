@@ -444,6 +444,8 @@ constant DebugFlag VECTORIZE = DEBUG_FLAG(137, "vectorize", false,
   Util.gettext("Activates vectorization in the backend."));
 constant DebugFlag CHECK_EXT_LIBS = DEBUG_FLAG(138, "buildExternalLibs", true,
   Util.gettext("Use the autotools project in the Resources folder of the library to build missing external libraries."));
+constant DebugFlag RUNTIME_STATIC_LINKING = DEBUG_FLAG(139, "runtimeStaticLinking", false,
+  Util.gettext("Use the static simulation runtime libraries (C++ simulation runtime)."));
 
 // This is a list of all debug flags, to keep track of which flags are used. A
 // flag can not be used unless it's in this list, and the list is checked at
@@ -588,7 +590,8 @@ constant list<DebugFlag> allDebugFlags = {
   ADD_SCALED_VARS,
   ADD_SCALED_VARS_INPUT,
   VECTORIZE,
-  CHECK_EXT_LIBS
+  CHECK_EXT_LIBS,
+  RUNTIME_STATIC_LINKING
 };
 
 public
@@ -733,7 +736,9 @@ constant ConfigFlag INDEX_REDUCTION_METHOD = CONFIG_FLAG(15, "indexReductionMeth
   NONE(), EXTERNAL(), STRING_FLAG("dynamicStateSelection"),
   SOME(STRING_DESC_OPTION({
     ("uode", Util.gettext("Use the underlying ODE without the constraints.")),
-    ("dynamicStateSelection", Util.gettext("Simple index reduction method, select (dynamic) dummy states based on analysis of the system."))})),
+    ("dynamicStateSelection", Util.gettext("Simple index reduction method, select (dynamic) dummy states based on analysis of the system.")),
+    ("dummyDerivatives", Util.gettext("Simple index reduction method, select (static) dummy states based on heuristic."))
+    })),
     Util.gettext("Sets the index reduction method to use. See --help=optmodules for more info."));
 
 constant ConfigFlag POST_OPT_MODULES = CONFIG_FLAG(16, "postOptModules",
@@ -1059,7 +1064,6 @@ constant ConfigFlag SYM_EULER = CONFIG_FLAG(69, "symEuler",
 constant ConfigFlag ADD_TIME_AS_STATE = CONFIG_FLAG(70,
   "addTimeAsState", NONE(), INTERNAL(), BOOL_FLAG(false), NONE(),
   Util.gettext("Experimental feature: this repaces each occurrence of variable time with a new introduced state $time with equation der($time) = 1.0"));
-
 
 protected
 // This is a list of all configuration flags. A flag can not be used unless it's

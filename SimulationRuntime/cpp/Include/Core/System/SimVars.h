@@ -1,4 +1,8 @@
 #pragma once
+/** @addtogroup coreSystem
+ *  
+ *  @{
+ */
 
 template<typename T>
 /**
@@ -9,6 +13,7 @@ template<typename T>
 class AlignedArray
 #else
  */
+     
 class BOOST_EXTENSION_SIMVARS_DECL AlignedArray
 /*#endif*/
 {
@@ -136,3 +141,6 @@ class BOOST_EXTENSION_SIMVARS_DECL SimVars: public ISimVars
     //Stores all variables occurred before an event
     double* _pre_vars;
 };
+
+/** @} */ // end of coreSystem
+

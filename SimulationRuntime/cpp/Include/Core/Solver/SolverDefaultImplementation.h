@@ -1,17 +1,10 @@
 #pragma once
-
-#include <Core/System/IMixedSystem.h>
-#include <Core/System/IContinuous.h>
-#include <Core/System/IEvent.h>
-#include <Core/System/ITime.h>
-#include <Core/System/IWriteOutput.h>
-#include <Core/System/ISystemInitialization.h>
-#include <Core/System/ISystemProperties.h>
-#include <Core/Solver/ISolver.h>        // Solver interface
-#include <Core/Solver/ISolverSettings.h>      // SolverSettings interface
+/** @addtogroup coreSolver
+ *  
+ *  @{
+ */
 #include <Core/Solver/SystemStateSelection.h>
 #include <Core/Solver/SimulationMonitor.h>
-
 #ifdef RUNTIME_PROFILING
 #include <Core/Utils/extension/measure_time.hpp>
 #endif
@@ -33,10 +26,6 @@ Provision of member variables used by all solvers.
 /*****************************************************************************
 Copyright (c) 2008, OSMC
 *****************************************************************************/
-#if defined(RUNTIME_STATIC_LINKING)
-#undef BOOST_EXTENSION_SOLVER_DECL
-#define BOOST_EXTENSION_SOLVER_DECL
-#endif
 
 class BOOST_EXTENSION_SOLVER_DECL SolverDefaultImplementation : public SimulationMonitor
 {
@@ -136,3 +125,4 @@ private:
   MeasureTimeValues *writeFunctionStartValues, *writeFunctionEndValues;
   #endif
 };
+ /** @} */ // end of coreSolver

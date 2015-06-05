@@ -88,6 +88,7 @@ algorithm
 
    if not inOptimicaFlag then
     Flags.setConfigEnum(Flags.GRAMMAR, Flags.OPTIMICA);
+    Flags.setConfigString(Flags.INDEX_REDUCTION_METHOD, "dummyDerivatives");
    end if;
 
     (mayer,lagrange,startTimeE,finalTimeE) := match(inClassAttr)

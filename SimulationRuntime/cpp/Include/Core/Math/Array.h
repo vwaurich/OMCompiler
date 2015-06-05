@@ -1,5 +1,9 @@
 #pragma once
-
+/** @defgroup math Core.Math
+ *  Module for array operations and math functions
+ *  @{
+ */
+     
 /**
 * forward declaration
 */
@@ -2004,7 +2008,7 @@ public:
     }
     return *this;
   }
-
+ 
   void setDims(size_t size1, size_t size2, size_t size3)
   {
     _multi_array.resize(boost::extents[size1][size2][size3]);
@@ -2034,3 +2038,5 @@ public:
  private:
   boost::multi_array<T, 3> &_multi_array; // refers to base class
 };
+/** @} */ // end of math
+

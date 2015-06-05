@@ -1,15 +1,8 @@
 #pragma once
-/*includes removed for static linking not needed any more
-#include <SimCoreFactory/Policies/SolverOMCFactory.h>
-#include <Core/SimulationSettings//ISettingsFactory.h>
-#include <Core/Solver/ISolver.h>
-#include <Core/Solver/ISolverSettings.h>
-#include <Core/SimulationSettings//ISimControllerSettings.h>
-#include <Core/System/IMixedSystem.h>
-#include <Core/SimulationSettings/Factory.h>
-#include <Solver/CVode/CVode.h>
-#include <Solver/IDA/IDA.h>
-*/
+/** @addtogroup simcorefactoriesPolicies
+ *  
+ *  @{
+ */
 
 /*
 Policy class to create solver object

@@ -5143,18 +5143,18 @@ author:Waurich TUD 2014-04"
   input BackendDAE.Variables knVars;
   output BackendDAE.Shared sharedOut;
 protected
-    BackendDAE.Variables knownVars,externalObjects,aliasVars;
-    BackendDAE.EquationArray initialEqs,removedEqs;
-    list<DAE.Constraint> constraints;
-    list<DAE.ClassAttributes> classAttrs;
-    FCore.Cache cache;
-    FCore.Graph graph;
-    DAE.FunctionTree functionTree;
-    BackendDAE.EventInfo eventInfo;
-    BackendDAE.ExternalObjectClasses extObjClasses;
-    BackendDAE.BackendDAEType backendDAEType;
-    BackendDAE.SymbolicJacobians symjacs;
-    BackendDAE.ExtraInfo info;
+  BackendDAE.Variables knownVars,externalObjects,aliasVars;
+  BackendDAE.EquationArray initialEqs,removedEqs;
+  list<DAE.Constraint> constraints;
+  list<DAE.ClassAttributes> classAttrs;
+  FCore.Cache cache;
+  FCore.Graph graph;
+  DAE.FunctionTree functionTree;
+  BackendDAE.EventInfo eventInfo;
+  BackendDAE.ExternalObjectClasses extObjClasses;
+  BackendDAE.BackendDAEType backendDAEType;
+  BackendDAE.SymbolicJacobians symjacs;
+  BackendDAE.ExtraInfo info;
 algorithm
   BackendDAE.SHARED(knownVars=knownVars,externalObjects=externalObjects,aliasVars=aliasVars,initialEqs=initialEqs,removedEqs=removedEqs,
   constraints=constraints,classAttrs=classAttrs,cache=cache,graph=graph,functionTree=functionTree,eventInfo=eventInfo,extObjClasses=extObjClasses,
@@ -7460,7 +7460,8 @@ protected
   String strIndexReductionMethod;
 algorithm
  allIndexReductionMethods := {(IndexReduction.pantelidesIndexReduction,"Pantelides",IndexReduction.noStateDeselection,"uode"),
-                              (IndexReduction.pantelidesIndexReduction,"Pantelides",IndexReduction.dynamicStateSelection,"dynamicStateSelection")};
+                              (IndexReduction.pantelidesIndexReduction,"Pantelides",IndexReduction.dynamicStateSelection,"dynamicStateSelection"),
+                              (IndexReduction.pantelidesIndexReduction,"Pantelides",IndexReduction.dynamicStateSelection,"dummyDerivatives")};
  strIndexReductionMethod := getIndexReductionMethodString();
  strIndexReductionMethod := Util.getOptionOrDefault(ostrIndexReductionMethod,strIndexReductionMethod);
  IndexReductionMethod := selectIndexReductionMethod(strIndexReductionMethod,allIndexReductionMethods);
@@ -8268,6 +8269,45 @@ algorithm
   comp := BackendDAE.SINGLEEQUATION(eqIdx,varIdx);
 end makeSingleEquationComp;
 
+public function getAliasVars
+  input BackendDAE.BackendDAE inDAE;
+  output BackendDAE.Variables outAliasVars;
+algorithm
+  BackendDAE.DAE(shared=BackendDAE.SHARED(aliasVars=outAliasVars)) := inDAE;
+end getAliasVars;
+
+public function getKnownVars
+  input BackendDAE.BackendDAE inDAE;
+  output BackendDAE.Variables outKnownVars;
+algorithm
+  BackendDAE.DAE(shared=BackendDAE.SHARED(knownVars=outKnownVars)) := inDAE;
+end getKnownVars;
+
+public function setAliasVars
+  input BackendDAE.BackendDAE inDAE;
+  input BackendDAE.Variables inAliasVars;
+  output BackendDAE.BackendDAE outDAE;
+protected
+  BackendDAE.EqSystems eqs;
+  BackendDAE.Shared shared;
+algorithm
+  BackendDAE.DAE(eqs, shared) := inDAE;
+  shared := replaceAliasVarsInShared(shared, inAliasVars);
+  outDAE := BackendDAE.DAE(eqs, shared);
+end setAliasVars;
+
+public function setKnownVars
+  input BackendDAE.BackendDAE inDAE;
+  input BackendDAE.Variables inKnownVars;
+  output BackendDAE.BackendDAE outDAE;
+protected
+  BackendDAE.EqSystems eqs;
+  BackendDAE.Shared shared;
+algorithm
+  BackendDAE.DAE(eqs, shared) := inDAE;
+  shared := replaceKnownVarsInShared(shared, inKnownVars);
+  outDAE := BackendDAE.DAE(eqs, shared);
+end setKnownVars;
 
 annotation(__OpenModelica_Interface="backend");
 end BackendDAEUtil;
