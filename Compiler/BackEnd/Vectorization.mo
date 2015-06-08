@@ -45,6 +45,7 @@ protected import BackendDAEUtil;
 protected import BackendDump;
 protected import BackendEquation;
 protected import BackendVariable;
+protected import BackendVarTransform.VariableReplacements;
 protected import ComponentReference;
 protected import Dump;
 protected import ExpressionDump;
@@ -147,6 +148,135 @@ algorithm
   end if;
 end buildForLoops;
 
+//-----------------------------------------------
+// removeSimpleEquationsForLoops
+//-----------------------------------------------
+
+public function removeSimpleEquationsForEquations ""
+  input BackendDAE.BackendDAE inDAE;
+  output BackendDAE.BackendDAE outDAE;
+protected
+algorithm
+  //traverse equation systems
+  outDAE := BackendDAEUtil.mapEqSystem(inDAE, removeSimpleEquationsForEquations1);
+end removeSimpleEquationsForEquations;
+
+
+protected function removeSimpleEquationsForEquations1
+  input BackendDAE.EqSystem eqSysIn;
+  input BackendDAE.Shared sharedIn;
+  output BackendDAE.EqSystem eqSysOut;
+  output BackendDAE.Shared sharedOut;
+protected
+  Integer size; 
+  
+  BackendDAE.EqSystem eqSys;
+  BackendDAE.EquationArray eqs;
+  BackendDAE.Variables vars;
+  BackendVarTransform.VariableReplacements repl;
+  list<BackendDAE.Equation> eqLst, simpleEqLst;
+
+algorithm 
+  // add empty replacement with bucketSize
+  size := BackendDAEUtil.systemSize(eqSysIn);
+  size := intMax(BaseHashTable.defaultBucketSize, realInt(realMul(intReal(size), 0.7)));
+  repl := BackendVarTransform.emptyReplacementsSized(size);
+  
+  //traverse for equations
+  BackendDAE.EQSYSTEM(orderedEqs=eqs, orderedVars=vars ) := eqSysIn;
+  (vars, repl, eqLst, simpleEqLst) := BackendEquation.traverseEquationArray(eqs, findSimpleForEquations, (vars, repl, {}, {}));
+   
+  
+  eqSysOut := eqSysIn;
+  sharedOut := sharedIn;
+end removeSimpleEquationsForEquations1;
+
+
+protected function findSimpleForEquations"equation traverse function that looks for alias assignments in for equations and introduces non-expanded alias statements"
+  input BackendDAE.Equation eqIn;
+  input tuple<BackendDAE.Variables, BackendVarTransform.VariableReplacements, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplIn;
+  output BackendDAE.Equation eqOut;
+  output tuple<BackendDAE.Variables, BackendVarTransform.VariableReplacements, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplOut;
+algorithm
+  (eqOut,tplOut) := matchcontinue(eqIn,tplIn)
+    local
+      DAE.Exp iter, start, stop;
+      BackendDAE.Variables vars;
+      BackendVarTransform.VariableReplacements repl;
+      DAE.ComponentRef cref1, cref2;
+      list<BackendDAE.Equation> eqLst, simpleEqLst;
+      
+  case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop,left=DAE.CREF(componentRef=cref1),right=DAE.CREF(componentRef=cref2)),(vars,repl,eqLst,simpleEqLst))
+    equation
+      //alias vars in for equation
+      cref1 = replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
+      cref2 = replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
+
+      print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+    then (eqIn,(vars,repl,eqLst,simpleEqLst));
+      
+  else
+    then (eqIn,tplIn);
+  end matchcontinue;
+end findSimpleForEquations;
+
+
+protected function replaceIteratorWithRangeInCref"replaces an iterator subscript with a range expression in a componenter reference"
+  input DAE.ComponentRef crefIn;
+  input DAE.Exp iter;
+  input DAE.Exp range;
+  output DAE.ComponentRef crefOut;  
+algorithm
+  crefOut := match(crefIn,iter,range)
+    local
+      DAE.Ident ident;
+      DAE.Type ty;
+      list<DAE.Subscript> subs;
+      DAE.ComponentRef cref1;
+  case(DAE.CREF_QUAL(ident,ty,subs,cref1),_,_)
+    equation
+      subs = List.map2(subs,replaceIteratorWithRangeInSub,iter,range);
+      cref1 = replaceIteratorWithRangeInCref(cref1,iter,range);
+  then DAE.CREF_QUAL(ident,ty,subs,cref1);
+ 
+  case(DAE.CREF_IDENT(ident,ty,subs),_,_)
+    equation
+      subs = List.map2(subs,replaceIteratorWithRangeInSub,iter,range);
+  then DAE.CREF_IDENT(ident,ty,subs);
+
+  else
+    then crefIn;
+  end match;
+end replaceIteratorWithRangeInCref;
+
+protected function replaceIteratorWithRangeInSub""
+  input DAE.Subscript subIn;
+  input DAE.Exp iter;
+  input DAE.Exp range;
+  output DAE.Subscript subOut;
+algorithm
+  subOut := matchcontinue(subIn,iter,range)
+    local
+      DAE.Exp iter0, exp;
+      DAE.Operator op;
+    case(DAE.INDEX(exp=iter0),_,_)
+      equation
+        true = Expression.expEqual(iter0,iter);
+      then DAE.INDEX(range);
+    case(DAE.INDEX(DAE.BINARY(iter0,op,exp)),_,_)
+      equation
+        true = Expression.expEqual(iter0,iter);
+        (exp,_) = ExpressionSimplify.simplify(DAE.BINARY(range,op,exp));
+      then DAE.INDEX(exp);
+    case(DAE.INDEX(DAE.BINARY(exp,op,iter0)),_,_)
+      equation
+        true = Expression.expEqual(iter0,iter);
+        (exp,_) = ExpressionSimplify.simplify(DAE.BINARY(range,op,exp));
+      then DAE.INDEX(exp);
+    else
+      then subIn;
+  end matchcontinue;
+end replaceIteratorWithRangeInSub;
 
 //-----------------------------------------------
 // Slice the unexpanded array vars according to the occurence of concrete indexed elements in the mixed equations

@@ -80,6 +80,7 @@ protected import HashTableCrToCrEqLst;
 protected import HashTableCrToExp;
 protected import HashTableExpToExp;
 protected import HashTableExpToIndex;
+protected import Vectorization;
 
 
 protected import Array;
@@ -169,8 +170,8 @@ algorithm
     case "new" then performAliasEliminationBB(inDAE);
     else inDAE;
   end match;
-
   outDAE := fixAliasVars(outDAE) "workaround for #3323";
+  outDAE := Vectorization.removeSimpleEquationsForEquations(outDAE);
 end removeSimpleEquations;
 
 protected function fixAliasVars "author: lochel
