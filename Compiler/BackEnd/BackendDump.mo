@@ -2384,7 +2384,8 @@ algorithm
   connectorTypeStr := match(inConnectorType)
     case DAE.FLOW() then "flow=true ";
     case DAE.POTENTIAL() then "flow=false ";
-    else "";
+      case DAE.STREAM() then "STREAM ";
+    else "NON_CONNECTOR ";
   end match;
 end connectorTypeString;
 

@@ -131,6 +131,7 @@ if true then /* Suppress output */
     "../BackEnd/BackendQSS.mo",
     "../BackEnd/BackendVariable.mo",
     "../BackEnd/BackendVarTransform.mo",
+	"../BackEnd/BackendArrayVarTransform.mo",
     "../BackEnd/BinaryTree.mo",
     "../BackEnd/BinaryTreeInt.mo",
     "../BackEnd/Causalize.mo",
