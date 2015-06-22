@@ -73,7 +73,7 @@ public uniontype ArrayVarRepl
   record REPLACEMENTS
     HashTable2.HashTable nonArrayHT "cref --> exp";
     HashTable.HashTable arrayHT "cref --> idx, idx is used to find concrete arrayCrefs";
-    HashTable3.HashTable invHashTable "cref-->cref, to loop backwars";
+    HashTable3.HashTable invHashTable "cref-->crefs, to loop backwars";
     array<list<tuple<DAE.Subscript,DAE.Exp>>> arrayExps "for each arraycref, a list of corresponding subscripts and their replaced expressions";
     Integer nextFreeIdx;
   end REPLACEMENTS;
@@ -113,30 +113,33 @@ public function addArrReplacement "adds a replacement for an array cref and save
   input ArrayVarRepl repl;
   input DAE.ComponentRef inSrc;
   input DAE.Exp inDst;
-  input DAE.Subscript subIn; // the range
+  input Option<DAE.Subscript> subInOpt; // the range
   output ArrayVarRepl outRepl;
 algorithm
   outRepl:=
-  matchcontinue (repl,inSrc,inDst,subIn)
+  matchcontinue (repl,inSrc,inDst,subInOpt)
     local
       Integer idx;
-      DAE.ComponentRef src;
-      DAE.Subscript sub;
+      DAE.ComponentRef src, dst;
+      DAE.Subscript subIn,sub;
       HashTable.HashTable arrayHT;
       HashTable2.HashTable nonArrayHT;
       HashTable3.HashTable invHashTable;
+      list<DAE.ComponentRef> srcLst;
       list<tuple<DAE.Subscript,DAE.Exp>> crefEntries;
       array<list<tuple<DAE.Subscript,DAE.Exp>>> arrayExps;
-    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_,_)
+    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_,SOME(subIn))
       equation
         // an array cref
+        print("teste0\n");
         true = ComponentReference.crefHaveSubs(inSrc);
+        print("teste1\n");
         src = ComponentReference.crefStripSubs(inSrc);
         print("source: "+ComponentReference.printComponentRefStr(src)+"\n");
         if BaseHashTable.hasKey(src,arrayHT) then
           print("exists!\n");
-          //crefEntries = arrayGet(arrayExps,BaseHashTable.get(src,arrayHT));
-          //crefEntries = insertSubInCrefEntries(subIn,inDst,crefEntries,{});
+          crefEntries = arrayGet(arrayExps,BaseHashTable.get(src,arrayHT));
+          crefEntries = insertSubInCrefEntries((subIn,inDst),crefEntries,{});
           //arrayUpdate(arrayExps,BaseHashTable.get(src,arrayHT),crefEntries);
         else
           arrayHT = BaseHashTable.add((src, idx),arrayHT);
@@ -144,137 +147,182 @@ algorithm
           arrayUpdate(arrayExps,idx,crefEntries);
           idx = idx+1;
         end if;
-      then
-        REPLACEMENTS(nonArrayHT,arrayHT,invHashTable,arrayExps,idx);
+      then REPLACEMENTS(nonArrayHT,arrayHT,invHashTable,arrayExps,idx);
+    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_,NONE())
+      equation
+        // a non array cref
+        print("test0\n");
+        false = ComponentReference.crefHaveSubs(inSrc);
+        print("test1\n");
+        nonArrayHT = BaseHashTable.add((inSrc, inDst),nonArrayHT);
+        print("test2\n");
+        // add cref assignment to inverse hash table
+        if Expression.isCref(inDst) then
+        print("test3\n");
+          dst = Expression.expCref(inDst);
+          print("test4\n");
+          if BaseHashTable.hasKey(dst,invHashTable) then
+          print("test5\n");
+            srcLst = BaseHashTable.get(dst,invHashTable);
+            print("test6\n");
+            invHashTable = BaseHashTable.add((dst, inSrc::srcLst),invHashTable);
+            print("test7\n");
+          else invHashTable = BaseHashTable.add((dst, {inSrc}),invHashTable);
+          print("test8\n");
+          end if;
+        end if;
+        print("test9\n");
+      then REPLACEMENTS(nonArrayHT,arrayHT,invHashTable,arrayExps,idx);
     case (_,_,_,_)
       equation
-        print("-BackendArrayVarTransform.addReplacement failed for " + ComponentReference.printComponentRefStr(inSrc)+"\n");
+        print("-BackendArrayVarTransform.addArrReplacement failed for " + ComponentReference.printComponentRefStr(inSrc)+"\n");
       then
         fail();
   end matchcontinue;
 end addArrReplacement;
 
 protected function insertSubInCrefEntries"inserts a subentry in the list of subentries"
-  input DAE.Subscript sub;
-  input DAE.Exp exp;
+  input tuple<DAE.Subscript,DAE.Exp> entry;
   input list<tuple<DAE.Subscript,DAE.Exp>> crefEntriesIn;
   input list<tuple<DAE.Subscript,DAE.Exp>> foldIn;
   output list<tuple<DAE.Subscript,DAE.Exp>> foldOut;
 protected
   Boolean merged;
-  tuple<DAE.Subscript,DAE.Exp> entry;
+  DAE.Subscript sub0, sub1;
+  DAE.Exp exp0, exp1;
   list<tuple<DAE.Subscript,DAE.Exp>> lst, rest;
 algorithm
-  foldOut := matchcontinue(sub,exp,crefEntriesIn,foldIn)
+  foldOut := matchcontinue(entry,crefEntriesIn,foldIn)
     local
-  case(_,_,{},{})
+  case(_,{},{})
     //no entry yet
-    then({(sub,exp)});
-  case(_,_,entry::rest,_)
+    then({entry});
+  case((sub0,exp0),(sub1,exp1)::rest,_)
     equation
     //merge subscripts if necessary
-      (lst,merged) = mergeSubscripts((sub,exp),entry);
+      (lst,merged) = mergeSubscripts((sub0,exp0),(sub1,exp1));
       if merged then
         lst = listAppend(foldIn,lst);
       else
-        lst = insertSubInCrefEntries(sub,exp,rest,entry::foldIn);
+        lst = insertSubInCrefEntries((sub0,exp0),rest,listAppend(foldIn,lst));
       end if;
     then lst;
-  case(_,_,{},_)
+  case(_,{},_)
     equation
     //append entry
-      lst = (sub,exp)::foldIn;
+      lst = entry::foldIn;
     then lst;
   end matchcontinue;
 end insertSubInCrefEntries;
 
-protected function mergeSubscripts"compares 2 subscripts and merges both entries."
+protected function mergeSubscripts
+"compares 2 subscripts and merges both entries to get a rising subscript order.
+If sub1 is smaller than sub2, it will be prepended.
+If sub1 is bigger it wont be merched and the upper function calls the next bigger sub2
+Always merge only the parts of sub1 that interfer with sub2"
   input tuple<DAE.Subscript,DAE.Exp> sub1; // to be inserted
   input tuple<DAE.Subscript,DAE.Exp> sub2;
   output list<tuple<DAE.Subscript,DAE.Exp>> mergeLst;
-  output Boolean merged;
+  output Boolean finished; // true: stop at this sub2, false: upper function calls next sub2
 algorithm
-  (mergeLst,merged) := matchcontinue(sub1,sub2)
+  (mergeLst,finished) := matchcontinue(sub1,sub2)
     local
       Integer i1,i2,start1, start2, stop1 ,stop2;
       DAE.Exp exp1,exp2;
       DAE.Type ty;
 
-  case((DAE.INDEX(DAE.ICONST(i1)),_),(DAE.INDEX(DAE.ICONST(i2)),_))
+  case((DAE.INDEX(DAE.ICONST(i1)),exp1),(DAE.INDEX(DAE.ICONST(i2)),exp2))
     equation
       if intEq(i1,i2) then
-        mergeLst = {sub2};//equal
-        merged = true;
+        mergeLst = {sub1};//equal
+        finished = true;
       elseif intLt(i1,i2) then
-        mergeLst = {sub2};//less
-        merged = false;
+        mergeLst = {sub1,sub2};//less
+        finished = true;
       elseif intGt(i1,i2) then
-        mergeLst = {sub2,sub1};//bigger
-        merged = true;
+        mergeLst = {sub2};//bigger
+        finished = false;
       else
         print("check this1!");
       end if;
-    then (mergeLst,merged);
+    then (mergeLst,finished);
 
   case((DAE.INDEX(DAE.ICONST(i1)),exp1), (DAE.SLICE(DAE.RANGE(ty=ty,start=DAE.ICONST(start2),step=NONE(),stop=DAE.ICONST(stop2))),exp2))
     equation
       if intLt(i1,start2) then
-        mergeLst={sub2}; //less
-        merged = false;
+        //less
+        mergeLst={sub1,sub2};
+        finished = true;
       elseif intEq(i1,start2) then
-        mergeLst={sub1,(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(i1+1),NONE(),DAE.ICONST(stop2))),exp2)}; //beginning of range
-        merged = true;
+        //beginning of range
+        mergeLst={sub1,(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(i1+1),NONE(),DAE.ICONST(stop2))),exp2)};
+        finished = true;
       elseif intEq(i1,stop2) then
-        mergeLst={(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start2),NONE(),DAE.ICONST(i1-1))),exp2),sub1}; //end of range
-        merged = true;
+        //end of range
+        mergeLst={(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start2),NONE(),DAE.ICONST(i1-1))),exp2),sub1};
+        finished = true;
       elseif intGt(i1,start2) and intLt(i1,stop2) then
+        //included
         mergeLst={(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start2),NONE(),DAE.ICONST(i1-1))),exp2),
                   sub1,
-                  (DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(i1+1),NONE(),DAE.ICONST(stop2))),exp2) }; //included
-        merged = true;
+                  (DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(i1+1),NONE(),DAE.ICONST(stop2))),exp2) };
+        finished = true;
       elseif intGt(i1,stop2) then
-        mergeLst={sub2,sub1}; //bigger
-        merged = true;
+        //bigger
+        mergeLst={sub2};
+        finished = false;
       else
         print("check this2!");
       end if;
-    then (mergeLst,merged);
+    then (mergeLst,finished);
 
   case((DAE.SLICE(DAE.RANGE(start=DAE.ICONST(start1),stop=DAE.ICONST(stop1))),exp1),(DAE.SLICE(DAE.RANGE(ty=ty,start=DAE.ICONST(start2),step=NONE(),stop=DAE.ICONST(stop2))),exp2))
     equation
       print("start1"+intString(start1)+" stop1"+intString(stop1)+" start2"+intString(start2)+" stop2"+intString(stop2)+"\n");
       if intLt(stop1,start2) then
-        mergeLst={sub2}; //less
-        merged = false;
+        mergeLst={sub1,sub2}; //less
+        finished = true;
+      elseif intLe(start1,start2) and intLt(stop1,stop2) then
+      // intersection sub1 before sub2
+        mergeLst={(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start2),NONE(),DAE.ICONST(stop1))),exp1),
+                  (DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(stop1+1),NONE(),DAE.ICONST(stop2))),exp2)};
+        finished = true;
+      elseif intLt(start2,start1) and intLe(stop2,stop1) then
+      // intersection sub2 before sub1
+        mergeLst={(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start2),NONE(),DAE.ICONST(start1-1))),exp2),
+                  (DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start1),NONE(),DAE.ICONST(stop2))),exp1)};
+        finished = false;
       elseif intGt(start1,start2) and intLt(stop1,stop2) then
+      // inserted
         mergeLst={(DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start2),NONE(),DAE.ICONST(start1-1))),exp2),
                   sub1,
                   (DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(stop1+1),NONE(),DAE.ICONST(stop2))),exp2)}; //included
-        merged = true;
+        finished = true;
       elseif intGt(start1,stop2) then
-        mergeLst={sub2,sub1}; //bigger
-        merged = true;
+        mergeLst={sub2}; //bigger
+        finished = false;
       else
         print("check this3!");
       end if;
-    then (mergeLst,merged);
+    then (mergeLst,finished);
 
   case((DAE.INDEX(DAE.ICONST(i1)),exp1),(DAE.WHOLEDIM(),exp2))
     equation
       mergeLst={sub1, sub2}; //included;
-      merged = true;
-    then (mergeLst,merged);
+      finished = true;
+    then (mergeLst,finished);
   end matchcontinue;
 end mergeSubscripts;
+
 
 public function getReplacement "Retrives a replacement variable given a set of replacement rules and a
   source variable."
   input DAE.ComponentRef iCref;
   input ArrayVarRepl iRepl;
   output list<DAE.Exp> outCrefs;
-  output list<DAE.ComponentRef> notFoundCref;
+  output list<DAE.ComponentRef> notFoundCrefs;
 algorithm
-  (outCref,notFoundCref) := match (iCref,iRepl)
+  (outCrefs,notFoundCrefs) := match (iCref,iRepl)
     local
       DAE.ComponentRef src;
       list<DAE.Exp> dst;
@@ -283,8 +331,9 @@ algorithm
       array<list<tuple<DAE.Subscript,DAE.Exp>>> arrayExps;
       list<tuple<DAE.Subscript,DAE.Exp>> subExps;
       DAE.Subscript sub;
+      list<DAE.ComponentRef> crefs;
       list<DAE.Subscript> subs;
-    case(_, REPLACEMENTS(nonArrayHT=nonArrayHT,arrayHT=arrayHT))
+    case(_, REPLACEMENTS(nonArrayHT=nonArrayHT,arrayHT=arrayHT,arrayExps=arrayExps))
       equation
         if ComponentReference.crefHaveSubs(iCref) then
         // its an array cref
@@ -292,28 +341,33 @@ algorithm
           src = ComponentReference.crefStripSubs(iCref);
           subExps = arrayGet(arrayExps,BaseHashTable.get(src,arrayHT));
           (dst,subs) = getReplSubExps(sub,subExps);
-        else
+          crefs = List.map1r(List.map(subs,List.create),Vectorization.replaceFirstSubsInCref,iCref);
+        elseif BaseHashTable.hasKey(iCref,nonArrayHT) then
           dst = {BaseHashTable.get(iCref,nonArrayHT)};
+          crefs = {};
+        else
+          dst = {DAE.CREF(iCref,ComponentReference.crefType(iCref))};
+          crefs = {};
         end if;
-      then (dst,{});
+      then (dst,crefs);
   end match;
 end getReplacement;
 
 
 protected function getReplSubExps"gets the corresponding expressions for the givens ubscripts"
   input DAE.Subscript subIn;
-  input list<DAE.Subscript,DAE.Exp> subExps;
+  input list<tuple<DAE.Subscript,DAE.Exp>> subExps;
   output list<DAE.Exp> expsOut;
   output list<DAE.Subscript> notFoundSubs;
 algorithm
   (expsOut,notFoundSubs) := matchcontinue(subIn,subExps)
     local
       Integer start, stop, i1;
-      list<DAE.Subscript,DAE.Exp> rest;
+      list<tuple<DAE.Subscript,DAE.Exp>> rest;
       DAE.Exp exp;
       list<DAE.Exp> exps;
       list<DAE.Subscript> restSubs;
-  case(DAE.INDEX(DAE.ICONST(i1)),(DAE.SLICE(RANGE(start=DAE.ICONST(start), stop=DAE.ICONST(stop))),exp)::rest)
+  case(DAE.INDEX(DAE.ICONST(i1)),(DAE.SLICE(DAE.RANGE(start=DAE.ICONST(start), stop=DAE.ICONST(stop))),exp)::rest)
     equation
       // an index subscript
       if intGe(i1,start) and intLe(i1,stop) then
@@ -323,9 +377,8 @@ algorithm
         (exps,restSubs) = getReplSubExps(subIn,rest);
       end if;
     then (exps,restSubs);
-      
   case(_,{})
-    then ({},subIn);
+    then ({},{subIn});
   end matchcontinue;
 end getReplSubExps;
 
@@ -341,34 +394,73 @@ algorithm
       DAE.Type ty;
   case(DAE.CREF(componentRef=cref, ty=ty),_)
     equation
-      cref = Vectorization.replaceFirstSubsInCref(cref,subIn);
+      cref = Vectorization.replaceFirstSubsInCref(cref,{subIn});
     then (DAE.CREF(cref,ty));
   else
     then expIn;
   end matchcontinue;      
 end replaceSubExp;
 
+
 //-------------
 //REPLACING FUNCTIONS
 //-------------
 
+public function replaceEquations
+  input BackendDAE.Equation eqIn;
+  input ArrayVarRepl replIn; 
+  output list<BackendDAE.Equation> eqsOut;
+algorithm
+  eqsOut := matchcontinue(eqIn,replIn)
+    local
+      DAE.Exp e1, e2;
+      list<DAE.Exp> es1, es2;
+      list<DAE.ComponentRef> noReplCrefs1, noReplCref2;
+      DAE.ElementSource source;
+      BackendDAE.EquationAttributes attr;
+  case(BackendDAE.EQUATION(exp=e1, scalar=e2, source=source, attr=attr),_)
+      equation
+        e1 = replaceExp(e1, replIn);
+        e2 = replaceExp(e2, replIn);
+      then {BackendDAE.EQUATION(exp=e1, scalar=e2, source=source, attr=attr)};
+    else
+      then {eqIn};
+  end matchcontinue;
+end replaceEquations;
+
 public function replaceExp
   input DAE.Exp inExp;
-  input ArrayVarRepl repl;
-  output DAE.Exp outExp;
-  output Boolean replacementPerformed;
+  input ArrayVarRepl replIn;
+  output DAE.Exp expOut;
 algorithm
-  (outExp,replacementPerformed) := matchcontinue(inExp,repl)
+  (expOut) := matchcontinue(inExp,replIn)
     local
       DAE.ComponentRef cref;
-      DAE.Exp e;
+      DAE.Exp e1,e2;
+      DAE.Operator op;
+      list<DAE.Exp> crefExps;
+      list<DAE.ComponentRef> noRepCrefs1,noRepCrefs2;
   case(DAE.CREF(componentRef=cref),_)
     equation
-      (cref,_) = getReplacement(cref,repl);
-    then 
+      (crefExps,noRepCrefs1) = getReplacement(cref,replIn);
+      //print(stringDelimitList(List.map(crefExps,ExpressionDump.printExpStr),";")+"\n");
+      //print(stringDelimitList(List.map(noRepCrefs1,ComponentReference.printComponentRefStr),";")+"\n");
+      e1::_ = crefExps;
+    then e1;
+  case(DAE.BINARY(exp1=e1,operator=op,exp2=e2),_)
+    equation
+      e1 = replaceExp(e1,replIn);
+      e2 = replaceExp(e2,replIn);
+      e1 = ExpressionSimplify.simplify(DAE.BINARY(e1,op,e2));    
+    then e1;
+  else
+    equation
+      print("missing case in replaceExp"+ExpressionDump.dumpExpStr(inExp,1)+"\n");
+    then inExp;
+  end matchcontinue; 
 end replaceExp;
 
-*/
+
 //-------------
 //DUMPING STUFF
 //-------------
@@ -382,13 +474,16 @@ algorithm
       Integer len;
       HashTable2.HashTable naHT;
       HashTable.HashTable arrHT;
+      HashTable3.HashTable invHT;
       list<tuple<DAE.ComponentRef,DAE.Exp>> tplLst;
       list<tuple<DAE.ComponentRef,Integer>> tplLst2;
+      list<tuple<DAE.ComponentRef,list<DAE.ComponentRef>>> tplLst3;
       array<list<tuple<DAE.Subscript, DAE.Exp>>> arrayExps;
 
-    case (REPLACEMENTS(nonArrayHT=naHT, arrayHT=arrHT, arrayExps=arrayExps)) equation
+    case (REPLACEMENTS(nonArrayHT=naHT, arrayHT=arrHT, invHashTable=invHT, arrayExps=arrayExps)) equation
       (tplLst) = BaseHashTable.hashTableList(naHT);
       (tplLst2) = BaseHashTable.hashTableList(arrHT);
+      (tplLst3) = BaseHashTable.hashTableList(invHT);
       print("\nReplacements: (");
       len = listLength(tplLst)+listLength(tplLst2);
       len_str = intString(len);
@@ -400,6 +495,10 @@ algorithm
       print("\n");
       print("ARRAY-REPLACEMENTS========================================\n");
       str = stringDelimitList(List.map1(tplLst2,printReplacementTupleStr1,arrayExps), "\n");
+      print(str);
+      print("\n");
+      print("INVERSE-REPLACEMENTS========================================\n");
+      str = stringDelimitList(List.map(tplLst3,printReplacementTupleStr2), "\n");
       print(str);
       print("\n");
     then ();
@@ -418,15 +517,22 @@ protected function printReplacementTupleStr1 "help function to dumpReplacements"
   input array<list<tuple<DAE.Subscript,DAE.Exp>>> arrayExps;
   output String str;
 algorithm
-  str := ComponentReference.printComponentRefStr(Util.tuple21(tpl)) + " -> " + stringDelimitList(List.map(arrayGet(arrayExps,(Util.tuple22(tpl))),printReplacementTupleStr2),"");
+  str := ComponentReference.printComponentRefStr(Util.tuple21(tpl)) + " -> " + stringDelimitList(List.map(arrayGet(arrayExps,(Util.tuple22(tpl))),printReplacementTupleStr1_1),"");
 end printReplacementTupleStr1;
 
 protected function printReplacementTupleStr2 "help function to dumpReplacements"
+  input tuple<DAE.ComponentRef,list<DAE.ComponentRef>> tpl;
+  output String str;
+algorithm
+  str := ComponentReference.printComponentRefStr(Util.tuple21(tpl)) + " -> " + stringDelimitList(List.map(Util.tuple22(tpl),ComponentReference.printComponentRefStr), ", ");
+end printReplacementTupleStr2;
+
+protected function printReplacementTupleStr1_1 "help function to dumpReplacements"
   input tuple<DAE.Subscript,DAE.Exp> tpl;
   output String str;
 algorithm
   str := "["+ExpressionDump.printSubscriptStr(Util.tuple21(tpl)) + "] : " + ExpressionDump.printExpStr(Util.tuple22(tpl))+" ";
-end printReplacementTupleStr2;
+end printReplacementTupleStr1_1;
 
 annotation(__OpenModelica_Interface="backend");
 end BackendArrayVarTransform;

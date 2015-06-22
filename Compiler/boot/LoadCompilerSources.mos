@@ -119,6 +119,7 @@ if true then /* Suppress output */
 
   // "BackEnd";
     "../BackEnd/BackendDAE.mo",
+    "../BackEnd/BackendArrayVarTransform.mo",
     "../BackEnd/BackendDAEFunc.mo",
     "../BackEnd/BackendDAECreate.mo",
     "../BackEnd/BackendDAEEXT.mo",
