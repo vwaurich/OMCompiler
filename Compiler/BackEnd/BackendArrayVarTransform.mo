@@ -110,14 +110,13 @@ end emptyReplacementsSized;
 
 
 public function addArrReplacement "adds a replacement for an array cref and saves the replacements for the scalars in a compact way"
-  input ArrayVarRepl inRepl;
+  input ArrayVarRepl replIn;
   input DAE.ComponentRef inSrc;
   input DAE.Exp inDst;
-  input Option<DAE.Subscript> subInOpt; // the range
   output ArrayVarRepl outRepl;
 algorithm
   outRepl:=
-  matchcontinue (inRepl,inSrc,inDst,subInOpt)
+  matchcontinue (replIn,inSrc,inDst)
     local
       Integer idx;
       ArrayVarRepl repl;
@@ -132,38 +131,14 @@ algorithm
       list<tuple<DAE.Subscript,DAE.Exp>> crefEntries;
       array<list<tuple<DAE.Subscript,DAE.Exp>>> arrayExps;
 
-    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_,SOME(subIn))
-      equation
-        // an array cref with a certain slice
-        true = ComponentReference.crefHaveSubs(inSrc);
-        src = ComponentReference.crefStripSubs(inSrc);
-        print("source: "+ComponentReference.printComponentRefStr(src)+"\n");
-
-        //set replacement rules
-        if BaseHashTable.hasKey(src,arrayHT) then
-          crefEntries = arrayGet(arrayExps,BaseHashTable.get(src,arrayHT));
-          crefEntries = insertSubInCrefEntries((subIn,inDst),crefEntries,{});
-          arrayUpdate(arrayExps,BaseHashTable.get(src,arrayHT),crefEntries);
-        else
-          arrayHT = BaseHashTable.add((src, idx),arrayHT);
-          crefEntries = {(subIn,inDst)};
-          arrayUpdate(arrayExps,idx,crefEntries);
-          idx = idx+1;
-        end if;
-
-        //update the other alias vars of this one
-        //repl = updateAlias(inSrc,REPLACEMENTS(nonArrayHT,arrayHT,invHashTable,arrayExps,idx));
-        repl = REPLACEMENTS(nonArrayHT,arrayHT,invHashTable,arrayExps,idx);
-      then repl;
-
-    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_,NONE())
+    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_)
       algorithm
-        // an array cref without! a certain slice
+        // an array cref with a certain slice
         true := ComponentReference.crefHaveSubs(inSrc);
-        src := ComponentReference.crefStripSubs(inSrc);
-        {subIn} := ComponentReference.crefSubs(inSrc);
-        print("source: "+ComponentReference.printComponentRefStr(src)+"\n");
 
+        {subIn} := ComponentReference.crefSubs(inSrc);
+        src := ComponentReference.crefStripSubs(inSrc);
+        print("source: "+ComponentReference.printComponentRefStr(src)+"\n");
         //set replacement rules
         if BaseHashTable.hasKey(src,arrayHT) then
           crefEntries := arrayGet(arrayExps,BaseHashTable.get(src,arrayHT));
@@ -176,16 +151,29 @@ algorithm
           idx := idx+1;
         end if;
 
+        //add to inverse hash table
+        if Expression.isCref(inDst) or Expression.isNegativeUnary(inDst) then
+          print("check inverse!\n");
+          dst := if Expression.isNegativeUnary(inDst) then Expression.expCrefNegCref(inDst) else Expression.expCref(inDst);
+          dst := ComponentReference.crefStripSubs(dst);
+          if BaseHashTable.hasKey(dst,invHashTable) then
+            print("inverse has key!\n");
+            srcLst := BaseHashTable.get(dst,invHashTable);
+            invHashTable := BaseHashTable.add((dst, src::srcLst),invHashTable);
+          else invHashTable := BaseHashTable.add((dst, {src}),invHashTable);
+          end if;
+        end if;
+
         //update the other alias vars of this one
         repl := updateAlias(inSrc,REPLACEMENTS(nonArrayHT,arrayHT,invHashTable,arrayExps,idx));
+        //repl = REPLACEMENTS(nonArrayHT,arrayHT,invHashTable,arrayExps,idx);
       then repl;
 
-    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_,NONE())
+    case (REPLACEMENTS(nonArrayHT=nonArrayHT, arrayHT=arrayHT, invHashTable=invHashTable, arrayExps=arrayExps, nextFreeIdx=idx),_,_)
       algorithm
         // a non array cref
         false := ComponentReference.crefHaveSubs(inSrc);
         nonArrayHT := BaseHashTable.add((inSrc, inDst),nonArrayHT);
-
         // add cref assignment to inverse hash table
         if Expression.isCref(inDst) or Expression.isNegativeUnary(inDst) then
           print("check inverse!\n");
@@ -198,11 +186,10 @@ algorithm
           else invHashTable := BaseHashTable.add((dst, {inSrc}),invHashTable);
           end if;
         end if;
-
         //update the other alias vars of this one
         repl := updateAlias(inSrc,REPLACEMENTS(nonArrayHT, arrayHT, invHashTable, arrayExps, idx));
       then repl;
-    case (_,_,_,_)
+    case (_,_,_)
       equation
         print("-BackendArrayVarTransform.addArrReplacement failed for " + ComponentReference.printComponentRefStr(inSrc)+"\n");
       then
@@ -223,24 +210,32 @@ protected
   list<DAE.ComponentRef> aliasCrefs;
   list<DAE.Exp> aliasBinds;
 algorithm
-  REPLACEMENTS(invHashTable=invHashTable) := replIn;
-  try
-	  //update the other alias vars of this one
-	  if BaseHashTable.hasKey(src,invHashTable) then
-	    aliasCrefs := BaseHashTable.get(src,invHashTable);
-	    repl := replIn;
-	    for alias in aliasCrefs loop
-	      (aliasBinds,{}) := getReplacement(alias,repl);
-	      aliasBinds := List.map1(aliasBinds,replaceExp,repl);
+  replOut := matchcontinue(src,replIn)
+    local
+  case(_,REPLACEMENTS(invHashTable=invHashTable))
+    algorithm
+      // array cref
+      true :=  ComponentReference.crefHaveSubs(src);
+    then replIn;
+
+  case(_,REPLACEMENTS(invHashTable=invHashTable))
+    algorithm
+      // non-array cref
+	    if BaseHashTable.hasKey(src,invHashTable) then
+	      aliasCrefs := BaseHashTable.get(src,invHashTable);
+	      repl := replIn;
+	      for alias in aliasCrefs loop
+	        (aliasBinds,{}) := getReplacement(alias,repl);
+	        aliasBinds := List.map1(aliasBinds,replaceExp,repl);
 	        for bind in aliasBinds loop
-	          repl := addArrReplacement(repl,alias,bind,NONE());
+	          repl := addArrReplacement(repl,alias,bind);
 	        end for;
-	    end for;
-	  end if;
-	else
-    repl := replIn;
-  end try;
-  replOut := repl;
+	      end for;
+	    else
+	      repl := replIn;
+      end if;
+    then repl;
+  end matchcontinue;
 end updateAlias;
 
 
@@ -380,12 +375,12 @@ end mergeSubscripts;
 
 public function getReplacement "Retrives a replacement variable cref given a set of replacement rules and a
   source variable cref."
-  input DAE.ComponentRef iCref;
-  input ArrayVarRepl iRepl;
+  input DAE.ComponentRef crefIn;
+  input ArrayVarRepl replIn;
   output list<DAE.Exp> outCrefs;
   output list<DAE.ComponentRef> notFoundCrefs;
 algorithm
-  (outCrefs,notFoundCrefs) := matchcontinue(iCref,iRepl)
+  (outCrefs,notFoundCrefs) := matchcontinue(crefIn,replIn)
     local
       DAE.ComponentRef src;
       list<DAE.Exp> dst;
@@ -398,41 +393,39 @@ algorithm
       list<DAE.Subscript> subs;
     case(_, REPLACEMENTS(nonArrayHT=nonArrayHT,arrayHT=arrayHT,arrayExps=arrayExps))
       equation
-        print("ststar\n");
-        if ComponentReference.crefHaveSubs(iCref) then
+        if ComponentReference.crefHaveSubs(crefIn) then
         // its an array cref
-          print("tes1\n");
-          {sub} = ComponentReference.crefSubs(iCref);
-          print("tes2\n");
-          src = ComponentReference.crefStripSubs(iCref);
-          print("tes3\n");
-          subExps = arrayGet(arrayExps,BaseHashTable.get(src,arrayHT));
-          print("tes4\n");
-          (dst,subs) = getReplSubExps(sub,subExps);
-          print("tes5\n");
-          crefs = List.map1r(List.map(subs,List.create),Vectorization.replaceFirstSubsInCref,iCref);
-          print("tes6\n");
-        elseif BaseHashTable.hasKey(iCref,nonArrayHT) then
-        print("jojo\n");
-          dst = {BaseHashTable.get(iCref,nonArrayHT)};
-                  print("jojo2\n");
-
+          {sub} = ComponentReference.crefSubs(crefIn);
+          src = ComponentReference.crefStripSubs(crefIn);
+          if BaseHashTable.hasKey(src,arrayHT) then
+          // is in replacements
+            subExps = arrayGet(arrayExps,BaseHashTable.get(src,arrayHT));
+              //dumpReplacements(replIn);
+              //print("SUB "+ExpressionDump.printSubscriptStr(sub)+"\n");
+              //print(""+ stringDelimitList(List.map(subExps,printReplacementTupleStr1_1),"")+"\n");
+            (dst,subs) = getReplSubExps(sub,subExps);
+            crefs = List.map1r(List.map(subs,List.create),Vectorization.replaceFirstSubsInCref,crefIn);
+          else
+          // is not in replacements
+            crefs = {};
+            dst = {Expression.crefExp(crefIn)};
+          end if;
+        elseif BaseHashTable.hasKey(crefIn,nonArrayHT) then
+          dst = {BaseHashTable.get(crefIn,nonArrayHT)};
           crefs = {};
         else
-          dst = {DAE.CREF(iCref,ComponentReference.crefType(iCref))};
+          dst = {DAE.CREF(crefIn,ComponentReference.crefType(crefIn))};
           crefs = {};
         end if;
       then (dst,crefs);
     else
       equation
-        //dumpReplacements(iRepl);
-        print("???????\n");
       then fail();
   end matchcontinue;
 end getReplacement;
 
 
-protected function getReplSubExps"gets the corresponding expressions for the givens ubscripts"
+protected function getReplSubExps"gets the corresponding expressions for the given subscripts"
   input DAE.Subscript subIn;
   input list<tuple<DAE.Subscript,DAE.Exp>> subExps;
   output list<DAE.Exp> expsOut;
@@ -440,22 +433,37 @@ protected function getReplSubExps"gets the corresponding expressions for the giv
 algorithm
   (expsOut,notFoundSubs) := matchcontinue(subIn,subExps)
     local
-      Integer start, stop, i1;
+      Boolean cont;
+      Integer start1, stop1, start2, stop2, i1;
       list<tuple<DAE.Subscript,DAE.Exp>> rest;
       DAE.Exp exp;
       list<DAE.Exp> exps;
       list<DAE.Subscript> restSubs;
-  case(DAE.INDEX(DAE.ICONST(i1)),(DAE.SLICE(DAE.RANGE(start=DAE.ICONST(start), stop=DAE.ICONST(stop))),exp)::rest)
+
+  // get index out of range
+  case(DAE.INDEX(DAE.ICONST(i1)),(DAE.SLICE(DAE.RANGE(start=DAE.ICONST(start1), stop=DAE.ICONST(stop1))),exp)::rest)
     equation
       // an index subscript
-      if intGe(i1,start) and intLe(i1,stop) then
+      if intGe(i1,start1) and intLe(i1,stop1) then
         exps = {replaceSubExp(exp,subIn)};
         restSubs = {};
       else
         (exps,restSubs) = getReplSubExps(subIn,rest);
       end if;
     then (exps,restSubs);
+
+  // get range out of range
+  case(DAE.INDEX(DAE.RANGE(start=DAE.ICONST(start1), stop=DAE.ICONST(stop1))),(DAE.INDEX(DAE.RANGE(start=DAE.ICONST(start2), stop=DAE.ICONST(stop2))),exp)::rest)
+    equation
+     true = intEq(start1,start2) and intEq(stop1,stop2);
+     //the range fits perfectly
+     exps = {replaceSubExp(exp,subIn)};
+     restSubs = {};
+    then (exps,{});
+
   case(_,{})
+    equation
+            print("hehe\n");
     then ({},{subIn});
   end matchcontinue;
 end getReplSubExps;
@@ -491,20 +499,40 @@ public function replaceEquation
 algorithm
   eqsOut := matchcontinue(eqIn,replIn)
     local
-      DAE.Exp e1, e2;
+      DAE.Exp e1, e2, iter, start, stop;
+      DAE.ComponentRef cref;
       list<DAE.Exp> es1, es2;
-      list<DAE.ComponentRef> noReplCrefs1, noReplCref2;
+      list<DAE.ComponentRef> allCrefs1, allCrefs2, noReplCrefs1, noReplCrefs2;
       DAE.ElementSource source;
       BackendDAE.EquationAttributes attr;
-  case(BackendDAE.EQUATION(exp=e1, scalar=e2, source=source, attr=attr),_)
+    case(BackendDAE.EQUATION(exp=e1, scalar=e2, source=source, attr=attr),_)
       equation
         e1 = replaceExp(e1, replIn);
         e2 = replaceExp(e2, replIn);
       then {BackendDAE.EQUATION(exp=e1, scalar=e2, source=source, attr=attr)};
+
+    case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop, left=e1, right=e2, source=source, attr=attr),_)
+      algorithm
+        print("REPLACE IN FOR EQUATION\n");
+        allCrefs1 := Expression.extractCrefsFromExp(e1);
+        allCrefs2 := Expression.extractCrefsFromExp(e2);
+        print("ALL CREFS "+stringDelimitList(List.map(listAppend(allCrefs1,allCrefs2),ComponentReference.printComponentRefStr),", ")+"\n");
+        for cref in listAppend(allCrefs1,allCrefs2) loop
+          cref := replaceIteratorWithRangeInCref(cref,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
+          print("GET THE REPL FOR "+ComponentReference.printComponentRefStr(cref)+"\n");
+          (es1,noReplCrefs1) := getReplacement(cref,replIn);
+          print("GOT EXPS "+stringDelimitList(List.map(es1,ExpressionDump.printExpStr),", ")+"\n");
+          print("GOT noReplCrefs1 "+stringDelimitList(List.map(noReplCrefs1,ComponentReference.printComponentRefStr),", ")+"\n");
+          if not listEmpty(noReplCrefs1) or listLength(es1)>1 then print("ERROR!!! CHECK THIS1\n");dumpReplacements(replIn); end if;
+        end for;
+      then {BackendDAE.FOR_EQUATION(iter,start,stop,e1,e2,source,attr)};
+
     else
+    equation
       then {eqIn};
   end matchcontinue;
 end replaceEquation;
+
 
 public function replaceExp
   input DAE.Exp inExp;
@@ -513,11 +541,15 @@ public function replaceExp
 algorithm
   (expOut) := matchcontinue(inExp,replIn)
     local
+      Integer index;
+      Absyn.Path path;
+      DAE.CallAttributes attr;
       DAE.ComponentRef cref;
-      DAE.Exp e1,e2;
+      DAE.Exp e1,e2,e3;
       DAE.Operator op;
-      list<DAE.Exp> crefExps;
+      list<DAE.Exp> crefExps, expLst;
       list<DAE.ComponentRef> noRepCrefs1,noRepCrefs2;
+      Option<tuple<DAE.Exp,Integer,Integer>> optionExpisASUB;
   case(DAE.CREF(componentRef=cref),_)
     equation
       (crefExps,noRepCrefs1) = getReplacement(cref,replIn);
@@ -539,6 +571,27 @@ algorithm
       e1 = ExpressionSimplify.simplify(DAE.UNARY(op,e1));
     then e1;
 
+  case(DAE.RELATION(exp1=e1, operator=op, exp2=e2, index=index, optionExpisASUB=optionExpisASUB),_)
+    equation
+      e1 = replaceExp(e1,replIn);
+      e2 = replaceExp(e2,replIn);
+      e1 = ExpressionSimplify.simplify(DAE.RELATION(e1,op,e2,index,optionExpisASUB));
+    then e1;
+
+  case(DAE.IFEXP(expCond=e1, expThen=e2, expElse=e3),_)
+    equation
+      e1 = replaceExp(e1,replIn);
+      e2 = replaceExp(e2,replIn);
+      e3 = replaceExp(e3,replIn);
+      e1 = ExpressionSimplify.simplify(DAE.IFEXP(e1,e2,e3));
+    then e1;
+
+  case(DAE.CALL(path=path, expLst=expLst, attr=attr),_)
+    equation
+      expLst = List.map1(expLst,replaceExp,replIn);
+      e1 = DAE.CALL(path,expLst,attr);
+    then e1;
+
   case(_,_)
     equation
       true = Expression.isConst(inExp);
@@ -549,6 +602,66 @@ algorithm
     then inExp;
   end matchcontinue; 
 end replaceExp;
+
+
+
+public function replaceIteratorWithRangeInCref"replaces an iterator subscript with a range expression in a componenter reference"
+  input DAE.ComponentRef crefIn;
+  input DAE.Exp iter;
+  input DAE.Exp range;
+  output DAE.ComponentRef crefOut;
+algorithm
+  crefOut := match(crefIn,iter,range)
+    local
+      DAE.Ident ident;
+      DAE.Type ty;
+      list<DAE.Subscript> subs;
+      DAE.ComponentRef cref1;
+  case(DAE.CREF_QUAL(ident,ty,subs,cref1),_,_)
+    equation
+      subs = List.map2(subs,replaceIteratorWithRangeInSub,iter,range);
+      cref1 = replaceIteratorWithRangeInCref(cref1,iter,range);
+  then DAE.CREF_QUAL(ident,ty,subs,cref1);
+
+  case(DAE.CREF_IDENT(ident,ty,subs),_,_)
+    equation
+      subs = List.map2(subs,replaceIteratorWithRangeInSub,iter,range);
+  then DAE.CREF_IDENT(ident,ty,subs);
+
+  else
+    then crefIn;
+  end match;
+end replaceIteratorWithRangeInCref;
+
+
+protected function replaceIteratorWithRangeInSub"replaces an iterator subscript with a range expression in a subscript"
+  input DAE.Subscript subIn;
+  input DAE.Exp iter;
+  input DAE.Exp range;
+  output DAE.Subscript subOut;
+algorithm
+  subOut := matchcontinue(subIn,iter,range)
+    local
+      DAE.Exp iter0, exp;
+      DAE.Operator op;
+    case(DAE.INDEX(exp=iter0),_,_)
+      equation
+        true = Expression.expEqual(iter0,iter);
+      then DAE.INDEX(range);
+    case(DAE.INDEX(DAE.BINARY(iter0,op,exp)),_,_)
+      equation
+        true = Expression.expEqual(iter0,iter);
+        (exp,_) = ExpressionSimplify.simplify(DAE.BINARY(range,op,exp));
+      then DAE.INDEX(exp);
+    case(DAE.INDEX(DAE.BINARY(exp,op,iter0)),_,_)
+      equation
+        true = Expression.expEqual(iter0,iter);
+        (exp,_) = ExpressionSimplify.simplify(DAE.BINARY(range,op,exp));
+      then DAE.INDEX(exp);
+    else
+      then subIn;
+  end matchcontinue;
+end replaceIteratorWithRangeInSub;
 
 
 //-------------
