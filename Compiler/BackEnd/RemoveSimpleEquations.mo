@@ -162,7 +162,11 @@ protected
   Boolean b;
   BackendDAE.BackendDAE dae;
 algorithm  
-  dae := Vectorization.removeSimpleEquationsForEquations(inDAE);
+  if Flags.isSet(Flags.VECTORIZE) then
+    dae := Vectorization.removeSimpleEquationsForEquations(inDAE);
+  else
+    dae := inDAE;
+  end if;
   b := BackendDAEUtil.hasDAEMatching(inDAE);
   outDAE := match(Flags.getConfigString(Flags.REMOVE_SIMPLE_EQUATIONS))
     case "default" then if b then causal(dae) else fastAcausal(dae);
