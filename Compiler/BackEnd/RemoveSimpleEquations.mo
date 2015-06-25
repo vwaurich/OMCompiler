@@ -160,21 +160,15 @@ public function removeSimpleEquations "author: Frenkel TUD 2012-12
   output BackendDAE.BackendDAE outDAE;
 protected
   Boolean b;
-  BackendDAE.BackendDAE dae;
 algorithm  
-  if Flags.isSet(Flags.VECTORIZE) then
-    dae := Vectorization.removeSimpleEquationsForEquations(inDAE);
-  else
-    dae := inDAE;
-  end if;
   b := BackendDAEUtil.hasDAEMatching(inDAE);
   outDAE := match(Flags.getConfigString(Flags.REMOVE_SIMPLE_EQUATIONS))
-    case "default" then if b then causal(dae) else fastAcausal(dae);
-    case "causal" then causal(dae);
-    case "fastAcausal" then fastAcausal(dae);
-    case "allAcausal" then allAcausal(dae);
-    case "new" then performAliasEliminationBB(dae);
-    else dae;
+    case "default" then if b then causal(inDAE) else fastAcausal(inDAE);
+    case "causal" then causal(inDAE);
+    case "fastAcausal" then fastAcausal(inDAE);
+    case "allAcausal" then allAcausal(inDAE);
+    case "new" then performAliasEliminationBB(inDAE);
+    else inDAE;
   end match;
   outDAE := fixAliasVars(outDAE) "workaround for #3323";
 end removeSimpleEquations;

@@ -45,11 +45,12 @@ protected import BackendDAEUtil;
 protected import BackendDump;
 protected import BackendEquation;
 protected import BackendVariable;
-protected import BackendVarTransform.VariableReplacements;
+protected import BackendVarTransform;
 protected import ComponentReference;
 protected import Dump;
 protected import ExpressionDump;
 protected import ExpressionSimplify;
+protected import ExpressionSolve;
 protected import List;
 protected import SCode;
 protected import SCodeDump;
@@ -71,206 +72,400 @@ protected
   Integer idx;
   BackendDAE.EqSystem eqSys;
   BackendDAE.Shared shared;
+  BackendVarTransform.VariableReplacements repl0,repl1;
+  list<DAE.ComponentRef> scalarCrefs;
+  list<DAE.Exp> scalarCrefExps;
   list<BackendDAE.Equation> loopEqs;
   list<BackendDAE.Var> arrVars;
   list<Absyn.Exp> loopIds;
   list<BackendDAE.LoopInfo> loopInfos;
   list<tuple<DAE.ComponentRef,Integer,list<DAE.ComponentRef>>> arrayCrefs; //headCref, range, tailcrefs
-  list<BackendDAE.Var> varLst, arrayVars;
+  list<BackendDAE.Var> varLst, arrayVars, constVars, aliasVars;
   list<BackendDAE.Equation> classEqs,mixEqs,nonArrEqs;
-  list<DAE.ComponentRef> scalarCrefs;
 algorithm
     //BackendDump.dumpEquationList(eqsIn,"eqsIn");
     //BackendDump.dumpVariables(varsIn,"varsIn");
+
+  //dispatch vars and equals to different lists
+  //-------------------------------------------
+
+  //split vars in array vars and non array vars
   varLst := BackendVariable.varList(varsIn);
   (varLst, arrayVars) := List.fold(varLst, getArrayVars,({},{}));
-    //BackendDump.dumpVarList(varLst,"varLst");
 
   // get the arrayCrefs
   (arrayCrefs,_) := List.fold(arrayVars,getArrayVarCrefs,({},{}));
-    //BackendDump.dumpVarList(arrayVars,"arrayVars");
-    //print("arrayCrefs: "+stringDelimitList(List.map(List.map(arrayCrefs,Util.tuple31),ComponentReference.printComponentRefStr),"\n|")+"\n\n");
-    //print("ranges: "+stringDelimitList(List.map(List.map(arrayCrefs,Util.tuple32),intString),"\n|")+"\n\n");
-    //print("tails: "+stringDelimitList(List.map(List.map(arrayCrefs,Util.tuple33),ComponentReference.printComponentRefListStr),"\n|")+"\n\n");
 
   // dispatch the equations in classequations, mixedequations, non-array equations
   ((classEqs,mixEqs,nonArrEqs)) := List.fold1(eqsIn, dispatchLoopEquations,List.map(arrayCrefs,Util.tuple31),({},{},{}));
 
-    //BackendDump.dumpEquationList(classEqs,"classEqs");
-    //BackendDump.dumpEquationList(mixEqs,"mixEqs");
-    //BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs");
+  //build for equations for repeated equations
+  classEqs := buildBackendDAEForEquations(classEqs,{});
 
-  if false then
+  //find accumulated equations in mixEqs and insert SUM-Exp
+  mixEqs := listReverse(List.fold(mixEqs,buildAccumExpInEquations,{}));
+      BackendDump.dumpEquationList(classEqs,"classEqs2");
+      BackendDump.dumpEquationList(mixEqs,"mixEqs2");
+      BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs2");
 
-  //add loopinfos
-  (idx,classEqs) := addLoopInfosForClassEqs(classEqs, List.map(arrayCrefs,Util.tuple31), (1,{}));
-  (idx,mixEqs) := addLoopInfosForMixEqs(mixEqs, List.map(arrayCrefs,Util.tuple31), (idx,{}));
-    //BackendDump.dumpEquationList(classEqs,"classEqs2");
-    //BackendDump.dumpEquationList(mixEqs,"mixEqs2");
-    //BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs2");
+  // build non-expanded arrays
+  arrayVars := unexpandArrayVariables(arrayVars,{});
 
-  //reduce accumulated loop equations, build loop equations
-  mixEqs := List.fold1(mixEqs,buildIteratedEquation,arrayCrefs,{});
+  //get scalar crefs
+  scalarCrefs := List.fold(mixEqs,getScalarArrayCrefsFromEquation,{});
+      print("scalarCrefs: "+stringDelimitList(List.map(scalarCrefs,ComponentReference.printComponentRefStr),"\n")+"\n");
 
-  classEqs := List.fold1(classEqs,buildIteratedEquation,arrayCrefs,{});
-    //BackendDump.dumpEquationList(classEqs,"classEqs3");
-    //BackendDump.dumpEquationList(mixEqs,"mixEqs3");
-  eqsOut := listAppend(listAppend(nonArrEqs,listAppend(classEqs,mixEqs)));
-    //BackendDump.dumpEquationList(eqsOut,"eqsOut");
+  //apply replacements
+  //-------------------------------------------
 
-  //shorten the array variables
-  arrVars := List.fold2(arrayCrefs,shortenArrayVars,BackendVariable.listVar1(arrayVars),2,{});
-  varLst := listAppend(varLst,arrVars);
-    //BackendDump.dumpVarList(varLst,"varsOut");
-  varsOut := BackendVariable.listVar1(varLst);
+  //find alias statements in non-array equations
+  (nonArrEqs, repl1) := removeSimpleEquationsWithFor(nonArrEqs,BackendVariable.listVar1(arrayVars),NONE());
+    BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs3");
+    BackendVarTransform.dumpReplacements(repl1);
 
-  else
-    //build for equations for repeated equations
-    classEqs := buildBackendDAEForEquations(classEqs,{});
+  //find alias statements in for equations
+  (classEqs, repl1) := removeSimpleEquationsWithFor(classEqs,BackendVariable.listVar1(arrayVars),SOME(repl1));
+    BackendDump.dumpEquationList(classEqs,"classEqs3");
+    BackendVarTransform.dumpReplacements(repl1);
 
-    //find accumulated equations in mixEqs and insert SUM-Exp
-    mixEqs := listReverse(List.fold(mixEqs,buildAccumExpInEquations,{}));
+  //find alias statements in mixed equations
+  (mixEqs, repl1) := removeSimpleEquationsWithFor(mixEqs,BackendVariable.listVar1(arrayVars),SOME(repl1));
+    BackendDump.dumpEquationList(mixEqs,"mixEqs3");
+    BackendVarTransform.dumpReplacements(repl1);
 
-    BackendDump.dumpEquationList(classEqs,"classEqs2");
-    BackendDump.dumpEquationList(mixEqs,"mixEqs2");
-    BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs");
+  //apply replacements on the scalar crefs
+  (scalarCrefExps,_) := List.map1_2(scalarCrefs,BackendVarTransform.replaceCref,repl1);
+  (_,(_,scalarCrefs)) := List.mapFold(scalarCrefExps,Expression.traverseSubexpressionsHelper,(Expression.traversingComponentRefFinder, {}));
+    print("scalarCrefExps: "+stringDelimitList(List.map(scalarCrefExps,ExpressionDump.printExpStr),"\n")+"\n");
+    print("scalarCrefs: "+stringDelimitList(List.map(scalarCrefs,ComponentReference.printComponentRefStr),"\n")+"\n");
 
-    // build non-expanded arrays
-    arrayVars := unexpandArrayVariables(arrayVars,{});
-    
-    // the non-array system
-    eqSys := BackendDAE.EQSYSTEM(BackendVariable.listVar1(varLst), BackendEquation.listEquation(nonArrEqs),NONE(),NONE(),BackendDAE.NO_MATCHING(),{}, BackendDAE.UNKNOWN_PARTITION());
-    BackendDump.dumpEqSystem(eqSys, "NON_ARRAY SYS");
+  //split for-equations in scalar eqs and reduced for equations
+   classEqs := List.fold1(classEqs,splitForEquations,scalarCrefs,{});
+     BackendDump.dumpEquationList(classEqs,"classEqs4");
 
+  //split arrayVars
+    BackendDump.dumpVariables(BackendVariable.listVar1(arrayVars),"arrayVars");
+  arrayVars := List.fold(scalarCrefs,sliceArrayVarsForCref,arrayVars);
+    BackendDump.dumpVariables(BackendVariable.listVar1(arrayVars),"arrayVars");
+
+        /*
+  //find alias statements in class equations again
+  (classEqs, repl1) := removeSimpleEquationsWithFor(classEqs,BackendVariable.listVar1(arrayVars),SOME(repl1));
+    BackendDump.dumpEquationList(classEqs,"classEqs4");
+    BackendVarTransform.dumpReplacements(repl1);
+
+
+  ((arrayVars,aliasVars)) := List.fold1(arrayVars,getArrayAlias,repl2,({},{}));
+    BackendDump.dumpVariables(BackendVariable.listVar1(arrayVars),"arrayVars");
+    BackendDump.dumpVariables(BackendVariable.listVar1(aliasVars),"aliasVars");
+
+
+    //-------------replacements------------------
+    // replace alias vars in the non-array system
+
+    print("REPLACE NON_ARRAY_SYSTEM\n ");
+    (nonArrEqs,repl0) := removeSimpleEquationsWithFor(nonArrEqs,BackendVariable.listVar1(varLst));
+    (mixEqs,_) := BackendVarTransform.replaceEquations(mixEqs,repl0,NONE());
+      BackendVarTransform.dumpReplacements(repl0);
+      BackendDump.dumpEquationList(nonArrEqs,"nonArrEqs3");
+
+    // replace alias vars in the for equations and mixed equations
+    print("REPLACE MIXED SYSTEM\n ");
+    (mixEqs, repl1) := removeSimpleEquationsWithFor(mixEqs,BackendVariable.listVar1(arrayVars));
+      BackendVarTransform.dumpReplacements(repl1);
+      BackendDump.dumpEquationList(mixEqs,"mixEqs3");
+
+    print("REPLACE FOR EQUATIONS\n ");
+    (classEqs, repl2) := removeSimpleEquationsForEquations(classEqs,BackendVariable.listVar1(arrayVars));
+      BackendArrayVarTransform.dumpReplacements(repl2);
+      BackendDump.dumpEquationList(classEqs,"classEqs3");
+    */
 
     eqsOut := listAppend(listAppend(nonArrEqs,listAppend(classEqs,mixEqs)));
-
-    //get scalar crefs and slice var arrays accordingly
-    scalarCrefs := List.fold(mixEqs,getScalarArrayCrefsFromEquation,{});
-    arrayVars := List.fold(scalarCrefs,sliceArrayVarsForCref,arrayVars);
-
     varLst := listAppend(varLst,arrayVars);
     varsOut := BackendVariable.listVar1(varLst);
-
-    BackendDump.dumpEquationList(eqsOut,"eqsOut");
-    BackendDump.dumpVariables(varsOut,"varsOut");
-  end if;
+      BackendDump.dumpEquationList(eqsOut,"eqsOut");
+      BackendDump.dumpVariables(varsOut,"varsOut");
 end buildForLoops;
 
 //-----------------------------------------------
-// removeSimpleEquationsForLoops
+// split For Equations
 //-----------------------------------------------
 
-public function removeSimpleEquationsForEquations "gets alias statements in for equations and leaves everything unexpanded"
-  input BackendDAE.BackendDAE inDAE;
-  output BackendDAE.BackendDAE outDAE;
-protected
+protected function splitForEquations"splits the for-equations into for equations and single equations which contain the scalarsIn"
+  input BackendDAE.Equation eqIn;
+  input list<DAE.ComponentRef> scalarsIn;
+  input list<BackendDAE.Equation> eqsIn;
+  output list<BackendDAE.Equation> eqsOut;
 algorithm
-  //traverse equation systems
-  outDAE := BackendDAEUtil.mapEqSystem(inDAE, removeSimpleEquationsForEquations1);
-end removeSimpleEquationsForEquations;
+  eqsOut := matchcontinue(eqIn,scalarsIn,eqsIn)
+    local
+      DAE.ComponentRef cref, crefRange;
+      DAE.Exp iter,start,stop,lhs,rhs, range;
+      DAE.ElementSource source;
+      BackendDAE.Equation forEq;
+      BackendDAE.EquationAttributes attr;
+      list<BackendDAE.Equation> scalarEqs;
+      list<DAE.ComponentRef> allCrefs, scalars, all;
+      list<DAE.Exp> restSubs;
+  case(BackendDAE.FOR_EQUATION(iter,start,stop,lhs,rhs,source,attr),_,_)
+    algorithm
+        //BackendDump.dumpEquationList({eqIn},"EQ");
+      allCrefs := BackendEquation.equationCrefs(eqIn);
+        //print("allCrefs: "+stringDelimitList(List.map(allCrefs,ComponentReference.printComponentRefStr),"\n|")+"\n\n");
+      range := DAE.RANGE(Expression.typeof(start),start,NONE(),stop);
+      restSubs := {};
+      for cref in allCrefs loop
+        scalars := {};
+        crefRange := BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref,iter,range);
+        if isRangeCref(crefRange) then
+          scalars := listAppend(scalars,List.filter1OnTrue(scalarsIn,crefFitsInCref,crefRange));
+          //print("scalars: "+stringDelimitList(List.map(scalars,ComponentReference.printComponentRefStr)," | ")+"\n");
+          ((range,restSubs)) := List.fold2(scalars,getIteratorVarForIndex,cref,iter,(range,restSubs));
+        end if;
+      end for;
+          //print("range: "+stringDelimitList(List.map({range},ExpressionDump.printExpStr),"\n")+"\n");
+          //print("restSubs: "+stringDelimitList(List.map(restSubs,ExpressionDump.printExpStr),"\n")+"\n");
+        scalarEqs := List.map1(restSubs,makeScalarForEquation,eqIn);
+        DAE.RANGE(start=start, stop=stop) := range;
+        forEq := BackendDAE.FOR_EQUATION(iter,start,stop,lhs,rhs,source,attr);
+          //BackendDump.dumpEquationList(forEq::scalarEqs,"MADE EQS");
+    then listAppend(forEq::scalarEqs,eqsIn);
+  else
+    then eqsIn;
+  end matchcontinue;
+end splitForEquations;
+
+protected function makeScalarForEquation"makes a scalar equation from a for-equation for a certain index"
+  input DAE.Exp iter;
+  input BackendDAE.Equation eqIn;
+  output BackendDAE.Equation eqOut;
+algorithm
+  eqOut := matchcontinue(iter,eqIn)
+    local
+      DAE.Exp iterExp, lhs, rhs;
+      DAE.ElementSource source;
+      BackendDAE.EquationAttributes attr;
+  case(_,BackendDAE.FOR_EQUATION(iter=iterExp,left=lhs,right=rhs,source=source,attr=attr))
+    equation
+      (lhs,_) = Expression.traverseExpBottomUp(lhs,replaceSubscriptInCrefExp,{DAE.INDEX(iter)});
+      (rhs,_) = Expression.traverseExpBottomUp(rhs,replaceSubscriptInCrefExp,{DAE.INDEX(iter)});
+  then BackendDAE.EQUATION(lhs,rhs,source,attr);
+  else
+    equation
+  then eqIn;
+  end matchcontinue;
+end makeScalarForEquation;
 
 
-protected function removeSimpleEquationsForEquations1"implementation for removeSimpleEquationsForEquations that handles eqSystems"
-  input BackendDAE.EqSystem eqSysIn;
-  input BackendDAE.Shared sharedIn;
-  output BackendDAE.EqSystem eqSysOut;
-  output BackendDAE.Shared sharedOut;
+protected function getIteratorVarForIndex"gets a certain scalar index e.g. a[3] and the corresponding iteration cref e.g. a[i+1]
+,checks that i is 2 and splits this equation the given range"
+  input DAE.ComponentRef crefScalar;
+  input DAE.ComponentRef crefWithIter;
+  input DAE.Exp iterator;
+  input tuple<DAE.Exp,list<DAE.Exp>> tplIn;
+  output tuple<DAE.Exp,list<DAE.Exp>> tplOut;
+protected
+  Integer startI,stopI,i;
+  DAE.Type ty;
+  DAE.Exp it,value,range;
+  list<DAE.Exp> rest;
+algorithm
+  try
+    (range,rest) := tplIn;
+    DAE.RANGE(ty=ty,start=DAE.ICONST(startI),stop=DAE.ICONST(stopI)) := range;
+    {DAE.INDEX(it)} := ComponentReference.crefSubs(crefWithIter);
+    {DAE.INDEX(value)} := ComponentReference.crefSubs(crefScalar);
+    (DAE.ICONST(i),_) := ExpressionSolve.solve(it,value,iterator);
+    if intEq(i,startI) then
+      range := DAE.RANGE(ty,DAE.ICONST(startI+1),NONE(),DAE.ICONST(stopI));
+      rest := DAE.ICONST(i)::rest;
+    elseif intEq(i,stopI) then
+      range := DAE.RANGE(ty,DAE.ICONST(startI),NONE(),DAE.ICONST(stopI-1));
+      rest := DAE.ICONST(i)::rest;
+    else
+      range := DAE.ICONST(-1);
+      rest := listAppend(List.map(List.intRange2(startI,stopI),Expression.makeIntegerExp),rest);
+    end if;
+      tplOut := (range,rest);
+  else
+    tplOut := tplIn;
+  end try;
+end getIteratorVarForIndex;
+
+protected function crefFitsInVar"check if the subs of cref are covered by the subs of the var"
+  input BackendDAE.Var var;
+  input DAE.ComponentRef cref;
+  output Boolean b;
+protected
+  DAE.ComponentRef varName;
+algorithm
+  BackendDAE.VAR(varName=varName) := var;
+  b := crefFitsInCref(cref,varName);
+end crefFitsInVar;
+
+protected function crefFitsInCref"check if the subs of cref1 are covered by the subs of cref2"
+  input DAE.ComponentRef cref1;
+  input DAE.ComponentRef cref2;
+  output Boolean b;
+protected
+  DAE.Subscript sub1,sub2;
+algorithm
+    //print("compare: "+stringDelimitList(List.map({cref1,cref2},ComponentReference.printComponentRefStr)," with ")+"\n\n");
+  {sub1} := ComponentReference.crefSubs(cref1);
+  {sub2} := ComponentReference.crefSubs(cref2);
+  b := subFitsInSub(sub1,sub2) and ComponentReference.crefEqualWithoutSubs(cref1,cref2);
+    //print("b1 "+boolString(subFitsInSub(sub1,sub2))+" b2 "+boolString(ComponentReference.crefEqualWithoutSubs(cref1,cref2))+"\n");
+end crefFitsInCref;
+
+protected function subFitsInSub"checks if sub1 fits in sub2"
+  input DAE.Subscript sub1;
+  input DAE.Subscript sub2;
+  output Boolean b;
+algorithm
+  b := matchcontinue(sub1,sub2)
+    local
+      Integer i1,start1,stop1,start2,stop2;
+  case(DAE.INDEX(DAE.ICONST(i1)),DAE.INDEX(DAE.RANGE(start=DAE.ICONST(start2),stop=DAE.ICONST(stop2))))
+    equation
+        //print(" i1 "+intString(i1)+" start2 "+intString(start2)+" stop2 "+intString(stop2)+"\n");
+      b = intLe(start2,i1) and intGe(stop2,i1);
+  then b;
+
+  else
+    then false;
+  end matchcontinue;
+end subFitsInSub;
+
+
+protected function isRangeCref"checks whether a cref has a range subscript"
+  input DAE.ComponentRef cref;
+  output Boolean b;
+protected
+  DAE.Exp exp;
+algorithm
+  try
+    {DAE.INDEX(exp)} := ComponentReference.crefSubs(cref);
+    b := Expression.isRange(exp);
+  else
+    b := false;
+  end try;
+end isRangeCref;
+
+
+//-----------------------------------------------
+// get Array Alias vars
+//-----------------------------------------------
+
+protected function getArrayAlias"folding function to apply alias assignments based on the replacements. dispatches the vars to the var list or to the alias list"
+  input BackendDAE.Var inVar;
+  input BackendArrayVarTransform.ArrayVarRepl replIn;
+  input tuple<list<BackendDAE.Var>, list<BackendDAE.Var>> foldIn; // vars, aliasVars
+  output tuple<list<BackendDAE.Var>, list<BackendDAE.Var>> foldOut;
+algorithm
+  foldOut := matchcontinue(inVar,replIn,foldIn)
+    local
+      DAE.ComponentRef cref0, cref1, aliasCref;
+      DAE.Type ty;
+      DAE.Exp exp;
+      DAE.Operator op;
+      DAE.Subscript sub1,sub2;
+      BackendDAE.Var alias, var;
+      list<BackendDAE.Var> varLst, aliasLst;
+      HashTable.HashTable arrayHT;
+      array<list<tuple<DAE.Subscript,DAE.Exp>>> arrayExps;
+  case(BackendDAE.VAR(varName=cref0),BackendArrayVarTransform.REPLACEMENTS(arrayHT=arrayHT, arrayExps=arrayExps),(varLst,aliasLst))
+    equation
+      {sub1} = ComponentReference.crefSubs(cref0);
+      cref1 = ComponentReference.crefStripSubs(cref0);
+      //try to find a replacement rule
+      if BaseHashTable.hasKey(cref1, arrayHT) then
+        {(sub2,exp)} = arrayGet(arrayExps,BaseHashTable.get(cref1,arrayHT));
+        if Expression.subscriptEqual({sub1},{sub2}) then
+          //set subs in iterator
+          (exp,_) = Expression.traverseExpBottomUp(exp,replaceSubscriptInCrefExp,{sub1});
+          alias = BackendVariable.setBindExp(inVar,SOME(exp));
+          aliasLst = alias::aliasLst;
+        else
+          print("The alias does not have the same subs!\n");
+        end if;
+      else
+        varLst = inVar::varLst;
+      end if;
+  then (varLst,aliasLst);
+  else
+    equation
+      print("getArrayAlias failed!\n");
+  then fail();
+  end matchcontinue;
+end getArrayAlias;
+
+
+//-----------------------------------------------
+// removeSimpleEquationsWithFor
+//-----------------------------------------------
+
+protected function removeSimpleEquationsWithFor"implementation for removeSimpleEquationsForEquations that handles eqSystems"
+  input list<BackendDAE.Equation> eqsIn;
+  input BackendDAE.Variables varsIn;
+  input Option<BackendVarTransform.VariableReplacements> replIn;
+  output list<BackendDAE.Equation> eqsOut;
+  output BackendVarTransform.VariableReplacements replOut;
 protected
   Integer size, i;
   BackendDAE.EqSystem eqSys;
   BackendDAE.EquationArray eqs;
   BackendDAE.Variables vars;
-  BackendArrayVarTransform.ArrayVarRepl repl;
-  list<DAE.ComponentRef> scalarCrefs;
+  BackendVarTransform.VariableReplacements repl;
   list<BackendDAE.Equation> allEqLst, eqLst, simpleEqLst;
   list<BackendDAE.Var> knownVarLst, aliasLst, varLst;
+  Option<BackendDAE.IncidenceMatrix> m;
+  Option<BackendDAE.IncidenceMatrixT> mT;
+  BackendDAE.Matching matching;
+  BackendDAE.StateSets stateSets "the statesets of the system";
+  BackendDAE.BaseClockPartitionKind partitionKind;
 algorithm
-  // add empty replacement with bucketSize
-  size := BackendDAEUtil.systemSize(eqSysIn);
-  size := intMax(BaseHashTable.defaultBucketSize, realInt(realMul(intReal(size), 0.7)));
-  repl := BackendArrayVarTransform.emptyReplacementsSized(size,size);
-
+  // add empty replacement with bucketSize or use input repl
+  if Util.isSome(replIn) then
+    repl := Util.getOption(replIn);
+  else
+    size := listLength(eqsIn);
+    size := intMax(BaseHashTable.defaultBucketSize, realInt(realMul(intReal(size), 0.7)));
+    repl := BackendVarTransform.emptyReplacementsSized(size);
+  end if;
   //traverse for equations
-  BackendDAE.EQSYSTEM(orderedEqs=eqs, orderedVars=vars) := eqSysIn;
-  //BackendDump.dumpVariables(vars,"VARSIN");
-  //BackendDump.dumpEquationArray(eqs,"EQSIN");
   eqLst := {};
   simpleEqLst := {};
-  allEqLst := BackendEquation.equationList(eqs);
+  allEqLst := eqsIn;
+  vars := varsIn;
   for i in List.intRange(2) loop
-     print("LOOP!"+intString(i)+"\n");
-     BackendDump.dumpEquationList(allEqLst,"allEqLst");
-    (vars, repl, eqLst, simpleEqLst) := List.fold(allEqLst, findSimpleForEquations1, (vars, repl, {}, simpleEqLst));
+    (vars, repl, eqLst, simpleEqLst) := List.fold(allEqLst, findSimpleEquationsWithFor1, (vars, repl, {}, simpleEqLst));
     allEqLst := eqLst;
   end for;
   // replace one final round
-  eqLst := List.flatten(List.map1(eqLst,BackendArrayVarTransform.replaceEquation,repl));
+  (eqsOut,_) := BackendVarTransform.replaceEquations(eqLst,repl,NONE());
+  replOut := repl;
+end removeSimpleEquationsWithFor;
 
-  //separate constant, alias and time-variable vars
-  //(knownVarLst,aliasLst,varLst) := List.fold1(BackendVariable.varList(vars),dispatchVars,repl,({},{},{}));
-
-  BackendArrayVarTransform.dumpReplacements(repl);
-  BackendDump.dumpEquationList(eqLst,"eqLst");
-  BackendDump.dumpEquationList(simpleEqLst,"simpleEqLst");
-
-  scalarCrefs := List.fold(eqLst,getScalarArrayCrefsFromEquation,{});
-  //arrayVars := List.fold(scalarCrefs,sliceArrayVarsForCref,arrayVars);
-  print("scalars: "+stringDelimitList(List.map(scalarCrefs,ComponentReference.printComponentRefStr),",  ")+"\n");
-
-
-  eqSysOut := eqSysIn;
-  sharedOut := sharedIn;
-end removeSimpleEquationsForEquations1;
-
-protected function dispatchVars
-  input BackendDAE.Var varIn;
-  input BackendArrayVarTransform.ArrayVarRepl repl;
-  input tuple<list<BackendDAE.Var>,list<BackendDAE.Var>,list<BackendDAE.Var>> tplIn;
-  output tuple<list<BackendDAE.Var>,list<BackendDAE.Var>,list<BackendDAE.Var>> tplOut;
-algorithm
-  tplOut := matchcontinue(varIn,repl,tplIn)
-    local
-      DAE.ComponentRef cref, crefNoSub;
-      list<DAE.Subscript> subs;
-      list<DAE.ComponentRef> notReplCrefs;
-      list<DAE.Exp> exps;
-      HashTable2.HashTable naHT;
-      HashTable.HashTable arrHT;
-      HashTable3.HashTable invHT;
-      array<list<tuple<DAE.Subscript, DAE.Exp>>> arrayExps;
-  case(BackendDAE.VAR(varName=cref),BackendArrayVarTransform.REPLACEMENTS(nonArrayHT=naHT, arrayHT=arrHT, invHashTable=invHT, arrayExps=arrayExps),_)
-    algorithm
-      // its an array var
-      true := ComponentReference.crefHaveSubs(cref);
-      crefNoSub := ComponentReference.crefStripSubs(cref);
-      subs := ComponentReference.crefSubs(cref);
-      //(exps,notReplCrefs) := BackendArrayVarTransform.getReplacement(cref,);
-
-    then tplIn;
-  end matchcontinue;
-end dispatchVars;
-
-
-protected function findSimpleForEquations1 "gets an equation, apply replacements and checks for new replacement rules"
+protected function findSimpleEquationsWithFor1 "gets an equation, apply replacements and checks for new replacement rules"
   input BackendDAE.Equation eqIn;
-  input tuple<BackendDAE.Variables, BackendArrayVarTransform.ArrayVarRepl, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplIn;
-  output tuple<BackendDAE.Variables, BackendArrayVarTransform.ArrayVarRepl, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplOut;
+  input tuple<BackendDAE.Variables, BackendVarTransform.VariableReplacements, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplIn;
+  output tuple<BackendDAE.Variables, BackendVarTransform.VariableReplacements, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplOut;
 protected
   list<BackendDAE.Equation> replEqs;
-  BackendArrayVarTransform.ArrayVarRepl repl;
+  BackendVarTransform.VariableReplacements repl;
 algorithm
   (_,repl,_,_) := tplIn;
-  print("\nCHECKEQ: "+BackendDump.equationString(eqIn)+"\n");
-  replEqs := BackendArrayVarTransform.replaceEquation(eqIn,repl);
-  print("REPL EQS: "+stringDelimitList(List.map(replEqs,BackendDump.equationString),"\n")+"\n");
-  tplOut := List.fold(replEqs,findSimpleForEquations2,tplIn);
-end findSimpleForEquations1;
+    //print("\nCHECKEQ: "+BackendDump.equationString(eqIn)+"\n");
+  (replEqs,_) := BackendVarTransform.replaceEquations({eqIn},repl,NONE());
+    //print("REPL EQS: "+stringDelimitList(List.map(replEqs,BackendDump.equationString),"\n")+"\n");
+  tplOut := List.fold(replEqs,findSimpleEquationsWithFor2,tplIn);
+end findSimpleEquationsWithFor1;
 
-protected function findSimpleForEquations2"equation traverse function that looks for alias assignments in for equations and introduces non-expanded alias statements"
+protected function findSimpleEquationsWithFor2"equation traverse function that looks for alias assignments in for equations and introduces alias statements"
   input BackendDAE.Equation eqIn;
-  input tuple<BackendDAE.Variables, BackendArrayVarTransform.ArrayVarRepl, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplIn;
-  output tuple<BackendDAE.Variables, BackendArrayVarTransform.ArrayVarRepl, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplOut;
+  input tuple<BackendDAE.Variables, BackendVarTransform.VariableReplacements, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplIn;
+  output tuple<BackendDAE.Variables, BackendVarTransform.VariableReplacements, list<BackendDAE.Equation>, list<BackendDAE.Equation>> tplOut;
 algorithm
   (tplOut) := matchcontinue(eqIn,tplIn)
     local
@@ -279,90 +474,37 @@ algorithm
       DAE.Operator op;
       DAE.Type ty;
       BackendDAE.Variables vars;
-      BackendArrayVarTransform.ArrayVarRepl repl;
+      BackendVarTransform.VariableReplacements repl;
       DAE.ComponentRef cref1, cref2;
       list<BackendDAE.Equation> eqLst, simpleEqLst;
       list<DAE.Subscript> subs1,sub2;
 
-  //cref[iter] = cref[iter];
-  case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop,left=DAE.CREF(componentRef=cref1),right=DAE.CREF(componentRef=cref2)),(vars,repl,eqLst,simpleEqLst))
-    equation
-      //alias vars in for equation
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident2)))} = ComponentReference.crefSubs(cref2);
-      //add replacement
-      print("REPL_EQ00: "+BackendDump.equationString(eqIn)+"\n");
-      if isConnectionVar(cref1,vars) then
-        cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,Expression.crefExp(cref2));
-      else
-        cref2 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
-        print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref2,Expression.crefExp(cref1));
-      end if;
-    then (vars,repl,eqLst,eqIn::simpleEqLst);
-      
-  //0 = cref[iter] +- cref[iter];
-  case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop, left=exp, right=DAE.BINARY(DAE.CREF(componentRef=cref1),op,DAE.CREF(componentRef=cref2))),(vars,repl,eqLst,simpleEqLst))
-    equation
-      true = Expression.isZero(exp);
-      //alias vars in for equation
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident2)))} = ComponentReference.crefSubs(cref2);
-      //add replacement
-      print("REPL_EQ00: "+BackendDump.equationString(eqIn)+"\n");
-      if isConnectionVar(cref1,vars) then
-        cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
-        e2 = if Expression.isAdd(op) then DAE.UNARY(DAE.UMINUS(Expression.typeof(exp)),Expression.crefExp(cref2)) else Expression.crefExp(cref2);
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ExpressionDump.printExpStr(e2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,e2);
-      else
-        cref2 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
-        e1 = if Expression.isAdd(op) then DAE.UNARY(DAE.UMINUS(Expression.typeof(exp)),Expression.crefExp(cref1)) else Expression.crefExp(cref1);
-        print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ExpressionDump.printExpStr(e1)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref2,e1);
-      end if;
-    then (vars,repl,eqLst,eqIn::simpleEqLst);
-
-  //cref[iter] = cref;
-  case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop,left=DAE.CREF(componentRef=cref1),right=DAE.CREF(componentRef=cref2)),(vars,repl,eqLst,simpleEqLst))
-    equation
-      //alias vars in for equation
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
-      //add replacement
-      print("REPL_EQ01: "+BackendDump.equationString(eqIn)+"\n");
-        cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,Expression.crefExp(cref2));
-    then (vars,repl,eqLst,eqIn::simpleEqLst);
-
-  // cref = const    
+  // cref = const
   case(BackendDAE.EQUATION(scalar=DAE.CREF(cref1), exp=exp),(vars,repl,eqLst,simpleEqLst))
     equation
       true = Expression.isConst(exp);
-      print("REPL_EQ1 "+BackendDump.equationString(eqIn)+"\n");
-      repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,exp);
+      //print("REPL_EQ1 "+BackendDump.equationString(eqIn)+"\n");
+      repl = BackendVarTransform.addReplacement(repl,cref1,exp,NONE());
     then (vars,repl,eqLst,eqIn::simpleEqLst);
 
-  // const = cref    
+  // const = cref
   case(BackendDAE.EQUATION(exp=DAE.CREF(cref1), scalar=exp),(vars,repl,eqLst,simpleEqLst))
     equation
       true = Expression.isConst(exp);
-      print("REPL_EQ2 "+BackendDump.equationString(eqIn)+"\n");
-      repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,exp);
+      //print("REPL_EQ2 "+BackendDump.equationString(eqIn)+"\n");
+      repl = BackendVarTransform.addReplacement(repl,cref1,exp,NONE());
     then (vars,repl,eqLst,eqIn::simpleEqLst);
 
-  // cref = cref    
+  // cref = cref
   case(BackendDAE.EQUATION(scalar=DAE.CREF(cref1), exp=DAE.CREF(cref2)),(vars,repl,eqLst,simpleEqLst))
     equation
-      print("REPL_EQ3 "+BackendDump.equationString(eqIn)+"\n");
+      //print("REPL_EQ3 "+BackendDump.equationString(eqIn)+"\n");
       if isConnectionVar(cref1,vars) or ComponentReference.crefHaveSubs(cref2) then
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,Expression.crefExp(cref2));
+        //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,Expression.crefExp(cref2),NONE());
       else
-        print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref2,Expression.crefExp(cref1));
+        //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,Expression.crefExp(cref1),NONE());
       end if;
     then (vars,repl,eqLst,eqIn::simpleEqLst);
 
@@ -370,13 +512,13 @@ algorithm
   case(BackendDAE.EQUATION(scalar=e1, exp=DAE.BINARY(exp1=DAE.CREF(cref1), operator=DAE.ADD(ty=ty), exp2=DAE.CREF(cref2))), (vars,repl,eqLst,simpleEqLst))
     equation
       true = Expression.isZero(e1);
-      print("REPL_EQ4 "+BackendDump.equationString(eqIn)+"\n");
+      //print("REPL_EQ4 "+BackendDump.equationString(eqIn)+"\n");
       if isConnectionVar(cref1,vars) or ComponentReference.crefHaveSubs(cref2) then
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref2)));
+        //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref2)),NONE());
       else
-        print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref2,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref1)));
+        //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref1)),NONE());
       end if;
     then (vars,repl,eqLst,eqIn::simpleEqLst);
 
@@ -384,13 +526,13 @@ algorithm
   case(BackendDAE.EQUATION(scalar=e1, exp=DAE.BINARY(exp1=DAE.CREF(cref1), operator=DAE.SUB(ty=ty), exp2=DAE.CREF(cref2))), (vars,repl,eqLst,simpleEqLst))
     equation
       true = Expression.isZero(e1);
-      print("REPL_EQ5 "+BackendDump.equationString(eqIn)+"\n");
+      //print("REPL_EQ5 "+BackendDump.equationString(eqIn)+"\n");
       if isConnectionVar(cref1,vars) or ComponentReference.crefHaveSubs(cref2) then
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,Expression.crefExp(cref2));
+        //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,Expression.crefExp(cref2),NONE());
       else
-        print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref2,Expression.crefExp(cref1));
+        //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,Expression.crefExp(cref1),NONE());
       end if;
     then (vars,repl,eqLst,eqIn::simpleEqLst);
 
@@ -398,13 +540,13 @@ algorithm
   case(BackendDAE.EQUATION(exp=e1, scalar=DAE.BINARY(exp1=DAE.CREF(cref1), operator=DAE.ADD(ty=ty), exp2=DAE.CREF(cref2))), (vars,repl,eqLst,simpleEqLst))
     equation
       true = Expression.isZero(e1);
-      print("REPL_EQ6 "+BackendDump.equationString(eqIn)+"\n");
+      //print("REPL_EQ6 "+BackendDump.equationString(eqIn)+"\n");
       if isConnectionVar(cref1,vars) or ComponentReference.crefHaveSubs(cref2) then
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref2)));
+        //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref2)),NONE());
       else
-        print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref2,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref1)));
+        //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,DAE.UNARY(DAE.UMINUS(ty),Expression.crefExp(cref1)),NONE());
       end if;
     then (vars,repl,eqLst,eqIn::simpleEqLst);
 
@@ -412,24 +554,157 @@ algorithm
   case(BackendDAE.EQUATION(exp=e1, scalar=DAE.BINARY(exp1=DAE.CREF(cref1), operator=DAE.SUB(ty=ty), exp2=DAE.CREF(cref2))), (vars,repl,eqLst,simpleEqLst))
     equation
       true = Expression.isZero(e1);
-      print("REPL_EQ6 "+BackendDump.equationString(eqIn)+"\n");
+      //print("REPL_EQ6 "+BackendDump.equationString(eqIn)+"\n");
       if isConnectionVar(cref1,vars) or ComponentReference.crefHaveSubs(cref2) then
-        print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref1,Expression.crefExp(cref2));
+        //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,Expression.crefExp(cref2),NONE());
       else
-        print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
-        repl = BackendArrayVarTransform.addArrReplacement(repl,cref2,Expression.crefExp(cref1));
+        //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,Expression.crefExp(cref1),NONE());
       end if;
     then (vars,repl,eqLst,eqIn::simpleEqLst);
-      
+
+  // (-cref) - cref = 0
+  case(BackendDAE.EQUATION(scalar=e1, exp=DAE.BINARY(exp1=DAE.UNARY(operator=op,exp=DAE.CREF(cref1)), operator=DAE.SUB(ty=ty), exp2=DAE.CREF(cref2))), (vars,repl,eqLst,simpleEqLst))
+    equation
+      true = Expression.isZero(e1);
+        //print("REPL_EQ7 "+BackendDump.equationString(eqIn)+"\n");
+      if isConnectionVar(cref1,vars) or ComponentReference.crefHaveSubs(cref2) then
+        //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,Expression.crefExp(cref2),NONE());
+      else
+        //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,Expression.crefExp(cref1),NONE());
+      end if;
+    then (vars,repl,eqLst,eqIn::simpleEqLst);
+
+  //cref[iter] = cref[iter] for whole dimension;
+  case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop,left=DAE.CREF(componentRef=cref1),right=DAE.CREF(componentRef=cref2)),(vars,repl,eqLst,simpleEqLst))
+    equation
+      //alias vars in for equation
+      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident2)))} = ComponentReference.crefSubs(cref2);
+      true = stringEqual(ident1,ident2);
+      cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
+      cref2 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
+      //add replacement
+        //print("-->EQ00: "+BackendDump.equationString(eqIn)+"\n\n");
+      if isConnectionVar(cref1,vars) then
+          //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" cref2: "+ComponentReference.printComponentRefStr(cref2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,Expression.crefExp(cref2),NONE());
+      else
+          //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" cref1: "+ComponentReference.printComponentRefStr(cref1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,Expression.crefExp(cref1),NONE());
+      end if;
+    then (vars,repl,eqLst,eqIn::simpleEqLst);
+
+  //0 = cref[iter] +- cref[iter];
+  case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop, left=exp, right=DAE.BINARY(DAE.CREF(componentRef=cref1),op,DAE.CREF(componentRef=cref2))),(vars,repl,eqLst,simpleEqLst))
+    equation
+      true = Expression.isZero(exp);
+      //alias vars in for equation
+      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident2)))} = ComponentReference.crefSubs(cref2);
+      true = stringEqual(ident1,ident2);
+      cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
+      cref2 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
+      //add replacement
+        //print("-->EQ01: "+BackendDump.equationString(eqIn)+"\n");
+      if isConnectionVar(cref1,vars) then
+        e2 = if Expression.isAdd(op) then DAE.UNARY(DAE.UMINUS(Expression.typeof(exp)),Expression.crefExp(cref2)) else Expression.crefExp(cref2);
+          //print("cref1: "+ComponentReference.printComponentRefStr(cref1)+" --> "+" e2: "+ExpressionDump.printExpStr(e2)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref1,e2,NONE());
+      else
+        e1 = if Expression.isAdd(op) then DAE.UNARY(DAE.UMINUS(Expression.typeof(exp)),Expression.crefExp(cref1)) else Expression.crefExp(cref1);
+          //print("cref2: "+ComponentReference.printComponentRefStr(cref2)+" --> "+" e1: "+ExpressionDump.printExpStr(e1)+"\n");
+        repl = BackendVarTransform.addReplacement(repl,cref2,e1,NONE());
+      end if;
+    then (vars,repl,eqLst,eqIn::simpleEqLst);
+
   case(_,(vars,repl,eqLst,simpleEqLst))
     equation
-      print("MISSED EQ "+BackendDump.equationString(eqIn)+"\n");
+      //print("MISSED EQ "+BackendDump.equationString(eqIn)+"\n");
     then (vars,repl,eqIn::eqLst,simpleEqLst);
   end matchcontinue;
-end findSimpleForEquations2;
+end findSimpleEquationsWithFor2;
 
+/*
+public function replaceExp"same as BackendVarTransform but check of a arraysub cref has no replacement, if there is another whole range cref"
+  input DAE.Exp inExp;
+  input BackendVarTransform.VariableReplacements replIn;
+  output DAE.Exp expOut;
+algorithm
+  (expOut) := matchcontinue(inExp,replIn)
+    local
+      Integer dim;
+      DAE.ComponentRef cref;
+      DAE.Exp e1, e2;
+      DAE.Operator op;
+      DAE.Subscript sub;
+      DAE.Type ty;
+case(DAE.CREF(componentRef=cref, ty=ty),_)
+    equation
+      if ComponentReference.crefHaveSubs(cref) and not BackendVarTransform.hasReplacement(replIn,cref) then
+        {sub} = ComponentReference.crefSubs(cref);
+        // check the max dimension
+        ComponentReference.debugPrintComponentRefTypeStr(cref);
+        print("check dim for "+ComponentReference.debugPrintComponentRefTypeStr(cref)+":\n");
+        dim = Expression.dimensionSize(listHead(ComponentReference.crefDims(cref)));
+        print(intString(dim)+"!!!!\n");
+        cref =  replaceFirstSubsInCref(cref,{DAE.INDEX(DAE.RANGE(ty,DAE.ICONST(1),NONE(),DAE.ICONST(dim)))});
+        if BackendVarTransform.hasReplacement(replIn,cref) then
+          e1 = BackendVarTransform.getReplacement(replIn,cref);
+          (e1,_) = Expression.traverseExpBottomUp(e1,replaceSubscriptInCrefExp,{sub});
+        else
+          e1 = inExp;
+        end if;
+      end if;
+    then e1;
 
+  case(DAE.BINARY(exp1=e1,operator=op,exp2=e2),_)
+    equation
+      e1 = replaceExp(e1,replIn);
+      e2 = replaceExp(e2,replIn);
+      e1 = ExpressionSimplify.simplify(DAE.BINARY(e1,op,e2));
+    then e1;
+
+  case(DAE.UNARY(operator=op,exp=e1),_)
+    equation
+      e1 = replaceExp(e1,replIn);
+      e1 = ExpressionSimplify.simplify(DAE.UNARY(op,e1));
+    then e1;
+
+  else
+    equation
+      e1 = BackendVarTransform.replaceExp(inExp,replIn,NONE());
+    then e1;
+  end matchcontinue;
+end replaceExp;
+
+public function replaceEquation"same as BackendVarTransform.replaceEquations but with my replaceExp"
+  input BackendDAE.Equation eqIn;
+  input BackendVarTransform.VariableReplacements replIn;
+  output BackendDAE.Equation eqOut;
+algorithm
+  eqOut := matchcontinue(eqIn,replIn)
+    local
+      DAE.Exp e1, e2;
+      DAE.ElementSource source;
+      BackendDAE.EquationAttributes attr;
+      BackendDAE.Equation eq;
+    case(BackendDAE.EQUATION(exp=e1, scalar=e2, source=source, attr=attr),_)
+      equation
+        print("replace in equation: "+BackendDump.equationString(eqIn)+"\n");
+        e1 = replaceExp(e1, replIn);
+        e2 = replaceExp(e2, replIn);
+      then BackendDAE.EQUATION(exp=e1, scalar=e2, source=source, attr=attr);
+      else
+        equation
+          ({eq},_) = BackendVarTransform.replaceEquations({eqIn},replIn,NONE());
+      then eq;
+  end matchcontinue;
+end replaceEquation;
+*/
 protected function isConnectionVar"outputs true if the var according to the cref comes from a connection equation"
   input DAE.ComponentRef crefIn;
   input BackendDAE.Variables vars;
@@ -573,7 +848,7 @@ protected
   BackendDAE.Var var;
   list<BackendDAE.Var> addVars, vars;
 algorithm
-  pos := List.position1OnTrue(varsIn,varIsEqualCrefWithoutSubs,crefIn);
+  pos := List.position1OnTrue(varsIn,crefFitsInVar,crefIn);
   var := listGet(varsIn,pos);
   (var,addVars) := sliceArrayVarsForCref1(var,crefIn);
   vars := List.replaceAt(var,pos,varsIn);
@@ -590,7 +865,7 @@ the returned var is the single indexed var, the addVars are the partially sliced
 algorithm
   (varOut,addVars) := matchcontinue(varIn,crefIn)
     local
-      Integer dim, idx;
+      Integer dim, start, stop, idx;
       list<Integer> idxRange;
       BackendDAE.Var var;
       DAE.ComponentRef cref;
@@ -605,7 +880,19 @@ algorithm
       {DAE.DIM_INTEGER(dim)} = ComponentReference.crefDims(cref);
       {DAE.INDEX(DAE.ICONST(idx))} = ComponentReference.crefSubs(crefIn);
       idxRange = List.deleteMember(List.intRange(dim),idx);
-      subs = List.fold1(idxRange,makeSliceSubscripts,ComponentReference.crefType(crefIn),{});// a list of slice subs
+      subs = List.fold1(idxRange,makeRangeSubscripts,ComponentReference.crefType(crefIn),{});// a list of slice subs
+      slicedCrefs = List.map1r(List.map(subs,List.create),replaceFirstSubsInCref,cref);
+      slicedVars = List.map1(slicedCrefs,BackendVariable.copyVarNewName,varIn);
+      var = BackendVariable.copyVarNewName(crefIn,varIn);
+    then (var,slicedVars);
+  case(BackendDAE.VAR(varName=cref),_)
+    equation
+      // slice a range
+      {DAE.INDEX(DAE.RANGE(start=DAE.ICONST(start),stop=DAE.ICONST(stop)))} = ComponentReference.crefSubs(cref);
+      {DAE.DIM_INTEGER(dim)} = ComponentReference.crefDims(cref);
+      {DAE.INDEX(DAE.ICONST(idx))} = ComponentReference.crefSubs(crefIn);
+      idxRange = List.deleteMember(List.intRange2(start,stop),idx);
+      subs = List.fold1(idxRange,makeRangeSubscripts,ComponentReference.crefType(crefIn),{});// a list of slice subs
       slicedCrefs = List.map1r(List.map(subs,List.create),replaceFirstSubsInCref,cref);
       slicedVars = List.map1(slicedCrefs,BackendVariable.copyVarNewName,varIn);
       var = BackendVariable.copyVarNewName(crefIn,varIn);
@@ -617,7 +904,7 @@ algorithm
   end matchcontinue;
 end sliceArrayVarsForCref1;
 
-protected function makeSliceSubscripts"fold function that makes DAE.SLICE() subscripts from an ordered list of indexes"
+protected function makeRangeSubscripts"fold function that makes DAE.SLICE() subscripts from an ordered list of indexes"
   input Integer idx;
   input DAE.Type tyIn;
   input list<DAE.Subscript> subsIn;
@@ -631,27 +918,27 @@ algorithm
 
   case(_,_,{})
     equation
-    //start a new slice
-  then {DAE.SLICE(DAE.RANGE(tyIn,DAE.ICONST(idx),NONE(),DAE.ICONST(idx)))};
+    //start a new range
+  then {DAE.INDEX(DAE.RANGE(tyIn,DAE.ICONST(idx),NONE(),DAE.ICONST(idx)))};
 
-  case(_,_,DAE.SLICE(DAE.RANGE(ty=ty,start=DAE.ICONST(start),step=NONE(),stop=DAE.ICONST(stop)))::rest)
+  case(_,_,DAE.INDEX(DAE.RANGE(ty=ty,start=DAE.ICONST(start),step=NONE(),stop=DAE.ICONST(stop)))::rest)
     equation
-    //extend slice
+    //extend range
     true = intEq(idx,stop+1);
-  then (DAE.SLICE(DAE.RANGE(ty,DAE.ICONST(start),NONE(),DAE.ICONST(idx)))::rest);
+  then (DAE.INDEX(DAE.RANGE(ty,DAE.ICONST(start),NONE(),DAE.ICONST(idx)))::rest);
 
-  case(_,_,DAE.SLICE(DAE.RANGE(ty=ty,start=DAE.ICONST(start),step=NONE(),stop=DAE.ICONST(stop)))::rest)
+  case(_,_,DAE.INDEX(DAE.RANGE(ty=ty,start=DAE.ICONST(start),step=NONE(),stop=DAE.ICONST(stop)))::rest)
     equation
-    //start an interrupted slice
+    //start an interrupted range
     true = intGt(idx,stop+1);
-  then (DAE.SLICE(DAE.RANGE(tyIn,DAE.ICONST(idx),NONE(),DAE.ICONST(idx)))::subsIn);
+  then (DAE.INDEX(DAE.RANGE(tyIn,DAE.ICONST(idx),NONE(),DAE.ICONST(idx)))::subsIn);
 
   else
     equation
-      print("missing case in makeSliceSubscripts\n");
+      print("missing case in makeRangeSubscripts\n");
     then fail();
   end matchcontinue;
-end makeSliceSubscripts;
+end makeRangeSubscripts;
 
 
 protected function getScalarArrayCrefsFromEquation"fold function to collect scalar crefs from equations"
@@ -712,15 +999,15 @@ algorithm
     local
       BackendDAE.Var var;
       DAE.ComponentRef cref;
-      list<DAE.BackendDAE.Var> rest;
+      list<DAE.BackendDAE.Var> rest, scalars;
   case({},_)
     then foldIn;
   case(var::rest,_)
     equation
       cref = BackendVariable.varCref(var);
       true = ComponentReference.crefHaveSubs(cref);
-      (_,rest) = List.split1OnTrue(rest,varIsEqualCrefWithoutSubs,cref);
-      cref = replaceFirstSubsInCref(cref,{DAE.WHOLEDIM()});
+      (scalars,rest) = List.split1OnTrue(rest,varIsEqualCrefWithoutSubs,cref);
+      cref = replaceFirstSubsInCref(cref,{DAE.INDEX(DAE.RANGE(BackendVariable.varType(var),DAE.ICONST(1),NONE(),DAE.ICONST(listLength(scalars)+1)))});
       var = BackendVariable.copyVarNewName(cref,var);
     then unexpandArrayVariables(rest,var::foldIn);
   case(var::rest,_)
@@ -781,20 +1068,20 @@ algorithm
   try
     {cref} := Expression.extractCrefsFromExp(termIn);
     true := ComponentReference.crefHaveSubs(cref);
-	  pos := List.position1OnTrue(minmaxTermsIn,minmaxTermEqual,termIn);
-	  if intEq(pos,-1) then
-	    // not yet collected array cref term
-	    {DAE.INDEX(DAE.ICONST(idx))} := ComponentReference.crefSubs(cref);
-	    minmaxTermsOut := (termIn,idx,idx)::minmaxTermsIn;
-	  else
-	  // an already collected array cref term
-	  (term,min,max) := listGet(minmaxTermsIn,pos);
-	  {DAE.INDEX(DAE.ICONST(idx))} := ComponentReference.crefSubs(cref);
-	  minmaxTermsOut := List.replaceAt((term,intMin(idx,min),intMax(idx,max)),pos,minmaxTermsIn);
-	  end if;
-	else
+    pos := List.position1OnTrue(minmaxTermsIn,minmaxTermEqual,termIn);
+    if intEq(pos,-1) then
+      // not yet collected array cref term
+      {DAE.INDEX(DAE.ICONST(idx))} := ComponentReference.crefSubs(cref);
+      minmaxTermsOut := (termIn,idx,idx)::minmaxTermsIn;
+    else
+    // an already collected array cref term
+    (term,min,max) := listGet(minmaxTermsIn,pos);
+    {DAE.INDEX(DAE.ICONST(idx))} := ComponentReference.crefSubs(cref);
+    minmaxTermsOut := List.replaceAt((term,intMin(idx,min),intMax(idx,max)),pos,minmaxTermsIn);
+    end if;
+  else
     minmaxTermsOut := (termIn,-1,-1)::minmaxTermsIn;
-	end try;
+  end try;
 end buildAccumExpInEquations1;
 
 protected function minmaxTermEqual"checks if a term is equal to the minmaxTerm without considering the subscripts"
@@ -905,7 +1192,6 @@ algorithm
       crefMinMax := List.thread3Map(listReverse(crefs),List.fill(11,numCrefs),List.fill(0,numCrefs),Util.make3Tuple);
       crefMinMax :=  List.fold(similarEqs,getCrefIdcsForEquation,crefMinMax);
       ((min,max)) := List.fold1(crefMinMax,getIterationRangesForCrefs,listLength(similarEqs),(-1,-1));
-
       // update crefs in equation
       iterator := DAE.CREF(DAE.CREF_ITER("i",-1,DAE.T_INTEGER_DEFAULT,{}),DAE.T_INTEGER_DEFAULT);
       (BackendDAE.EQUATION(exp=lhs,scalar=rhs),_) := BackendEquation.traverseExpsOfEquation(eq,setIteratorSubscriptCrefinEquation,(crefMinMax,iterator));
@@ -945,10 +1231,13 @@ algorithm
   (outExp,tplOut) := matchcontinue(inExp,tplIn)
     local
       Integer min, max;
+      Absyn.Path path;
+      DAE.CallAttributes attr;
       DAE.ComponentRef cref, refCref;
       DAE.Exp exp1, exp2,iterator, iterator1;
       DAE.Operator op;
       DAE.Type ty;
+      list<DAE.Exp> eLst;
       tuple<DAE.ComponentRef,Integer,Integer> refCrefMinMax;
       list<tuple<DAE.ComponentRef,Integer,Integer>> crefMinMax0, crefMinMax1;
 
@@ -980,6 +1269,12 @@ algorithm
       // continue traversing
       (exp1,(crefMinMax0,iterator))  := setIteratorSubscriptCrefinEquation(exp1,tplIn);
     then (DAE.UNARY(op,exp1),(crefMinMax0,iterator));
+
+  case(DAE.CALL(path=path,expLst=eLst,attr=attr),(crefMinMax0,iterator))
+    algorithm
+      // continue traversing
+      (eLst,(crefMinMax0,iterator))  := List.mapFold(eLst,setIteratorSubscriptCrefinEquation,tplIn);
+    then (DAE.CALL(path,eLst,attr),(crefMinMax0,iterator));
 
   else
     then (inExp,tplIn);
