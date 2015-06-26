@@ -56,6 +56,7 @@ public import Util;
 
 protected import Algorithm;
 protected import Array;
+protected import BackendArrayVarTransform;
 protected import BackendDAEOptimize;
 protected import BackendDAETransform;
 protected import BackendDump;
@@ -2614,7 +2615,7 @@ algorithm
   (outIntegerLst,rowSize) := matchcontinue (inEquation)
     local
       list<Integer> lst1,lst2,res,dimsize;
-      DAE.Exp e1,e2,e,expCref,cond;
+      DAE.Exp e1,e2,e,expCref,cond, start, stop, iter;
       list<DAE.Exp> expl;
       DAE.ComponentRef cr;
       BackendDAE.WhenEquation we,elsewe;
@@ -2702,6 +2703,23 @@ algorithm
         res = incidenceRow1(expl, incidenceRowExp,vars,iRow,functionTree,inIndexType);
         res = incidenceRowLstLst(eqnslst,vars,inIndexType,functionTree,res);
         (res,size) = incidenceRowLst(eqns,vars,inIndexType,functionTree,res);
+      then
+        (res,size);
+
+    // for Equation
+    case BackendDAE.FOR_EQUATION(iter=iter,start=start,stop=stop,left=e1,right=e2)
+      equation
+        print("e1: "+ExpressionDump.printExpStr(e1)+"\n");
+        (e1,_) = Expression.traverseExpBottomUp(e1,BackendArrayVarTransform.replaceIteratorWithRangeInCrefInExp,(iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop)));
+        print("e1_1: "+ExpressionDump.printExpStr(e1)+"\n");
+
+        print("e2: "+ExpressionDump.printExpStr(e2)+"\n");
+        (e2,_) = Expression.traverseExpBottomUp(e2,BackendArrayVarTransform.replaceIteratorWithRangeInCrefInExp,(iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop)));
+        print("e2_1: "+ExpressionDump.printExpStr(e2)+"\n");
+
+        lst1 = incidenceRowExp(e1,vars,iRow,functionTree,inIndexType);
+        res = incidenceRowExp(e2,vars,lst1,functionTree,inIndexType);
+        size = BackendEquation.equationSize(inEquation);
       then
         (res,size);
 

@@ -264,7 +264,7 @@ algorithm
         ht_1 = BaseHashTable.add((src_1, dst_1),ht);
         invHt_1 = addReplacementInv(invHt, src_1, dst_1);
         eht_1 = addExtendReplacement(eht,src_1,NONE());
-        arrHt1 = addArrayReplacement(arrHt,src_1);
+        (arrHt1,ht_1) = addArrayReplacement(arrHt,ht_1,src_1);
       then
         REPLACEMENTS(ht_1,invHt_1,eht_1,arrHt1,iv,derConst);
     case (_,_,_,_)
@@ -563,25 +563,124 @@ algorithm
 end makeTransitive2;
 
 protected function addArrayReplacement"for every cref with a subscript, store replaced crefs under a key which is the cref without subs"
-  input HashTable3.HashTable htIn;
+  input HashTable3.HashTable arrHtIn;
+  input HashTable2.HashTable htIn;
   input DAE.ComponentRef crefIn;
-  output HashTable3.HashTable htOut;
+  output HashTable3.HashTable arrHtOut;
+  output HashTable2.HashTable htOut;
 protected
   DAE.ComponentRef crefNoSub;
   list<DAE.ComponentRef> crefs;
+  HashTable3.HashTable arrHt;
 algorithm
   if ComponentReference.crefHaveSubs(crefIn) then
 	  crefNoSub := ComponentReference.crefStripSubs(crefIn);
-	  if BaseHashTable.hasKey(crefNoSub,htIn) then
-	    crefs := BaseHashTable.get(crefNoSub,htIn);
-	    htOut := BaseHashTable.add((crefNoSub,List.unique(crefIn::crefs)),htIn);
+	  if BaseHashTable.hasKey(crefNoSub,arrHtIn) then
+	    crefs := BaseHashTable.get(crefNoSub,arrHtIn);
+	    crefs := List.unique(crefIn::crefs);
+	    (arrHtOut,htOut) := mergeArrayCrefs(crefs,arrHtIn,htIn);
+	    //arrHtOut := BaseHashTable.add((crefNoSub,crefs),arrHtIn);
 	  else
-	    htOut := BaseHashTable.add((crefNoSub,{crefIn}),htIn);
+	    arrHtOut := BaseHashTable.add((crefNoSub,{crefIn}),arrHtIn);
+	    htOut := htIn;
 	  end if;
 	else
+	  arrHtOut := arrHtIn;
 	  htOut := htIn;
 	end if;
 end addArrayReplacement;
+
+protected function mergeArrayCrefs
+  input list<DAE.ComponentRef> crefsIn;
+  input HashTable3.HashTable arrHtIn;
+  input HashTable2.HashTable htIn;
+  output HashTable3.HashTable arrHtOut;
+  output HashTable2.HashTable htOut;
+protected
+  DAE.ComponentRef cref;
+  DAE.Exp exp;
+  list<DAE.ComponentRef> replCrefs,remCrefs;
+  list<DAE.Exp> indexes,replExps;
+algorithm
+  ((indexes,replCrefs,replExps,remCrefs)) := List.fold1(crefsIn,mergeArrayCrefs1,htIn,({},{},{},{}));
+  //print("replCrefs: "+stringDelimitList(List.map(replCrefs,ComponentReference.printComponentRefStr),", ")+"\n");
+  //print("replExps: "+stringDelimitList(List.map(replExps,ExpressionDump.printExpStr),", ")+"\n");
+  //print("remCrefs: "+stringDelimitList(List.map(remCrefs,ComponentReference.printComponentRefStr),", ")+"\n");
+  //print("indexes: "+stringDelimitList(List.map(indexes,ExpressionDump.printExpStr),", ")+"\n");
+  htOut := List.fold(remCrefs,BaseHashTable.delete,htIn);
+  for cref in replCrefs loop
+    exp::replExps := replExps;
+    htOut := BaseHashTable.add((cref,exp),htOut);
+  end for;
+  arrHtOut := BaseHashTable.add((ComponentReference.crefStripSubs(listHead(replCrefs)),replCrefs),arrHtIn);
+end mergeArrayCrefs;
+
+protected function mergeArrayCrefs1
+  input DAE.ComponentRef crefIn;
+  input HashTable2.HashTable htIn;
+  input tuple<list<DAE.Exp>,list<DAE.ComponentRef>,list<DAE.Exp>,list<DAE.ComponentRef>> tplIn;
+  output tuple<list<DAE.Exp>,list<DAE.ComponentRef>,list<DAE.Exp>,list<DAE.ComponentRef>> tplOut;  // allIndexes/replCrefs/remCrefs
+algorithm
+  tplOut := matchcontinue(crefIn,htIn,tplIn)
+    local
+      Boolean isExtended;
+      DAE.ComponentRef cref,newCref;
+      DAE.Exp idx, idx0, newRange, replExp;
+      list<DAE.Exp> indexes,indexes0, replExps,replExps0;
+      list<DAE.ComponentRef> remCrefs,replCrefs,remCrefs0,replCrefs0;
+    case(_,_,({},{},{},{}))
+      algorithm
+        {DAE.INDEX(idx0)} := ComponentReference.crefSubs(crefIn);
+        replExp := BaseHashTable.get(crefIn,htIn);
+      then ({idx0},{crefIn},{replExp},{});
+
+    case(_,_,(indexes0,replCrefs0,replExps0,remCrefs0))
+      algorithm
+        {DAE.INDEX(idx0)} := ComponentReference.crefSubs(crefIn);
+        replCrefs := {};
+        replExps := {};
+        remCrefs := {};
+        indexes := {};
+        //check the given crefIn with every already existing cref replacement, build new lists
+        for idx in indexes0 loop
+          cref::replCrefs0 := replCrefs0;
+          replExp::replExps0 := replExps0;
+            //print("merge "+ComponentReference.printComponentRefStr(crefIn)+" with  "+ComponentReference.printComponentRefStr(cref)+"\n");
+          if Vectorization.subFitsInSub(DAE.INDEX(idx0),DAE.INDEX(idx)) then  // crefIn is included in the  cref
+             replCrefs := cref::replCrefs;
+             replExps := replExp::replExps;
+             remCrefs := crefIn::remCrefs;
+             indexes := idx::indexes;
+          elseif Vectorization.subFitsInSub(DAE.INDEX(idx),DAE.INDEX(idx0)) then // the  cref is included in crefIn
+             replCrefs := crefIn::replCrefs;
+             replExps := BaseHashTable.get(crefIn,htIn)::replExps;
+             remCrefs := cref::remCrefs;
+             indexes := idx::indexes;
+          else
+            (isExtended,DAE.INDEX(newRange)) := Vectorization.subExtendsSub(DAE.INDEX(idx0),DAE.INDEX(idx));
+            if isExtended then
+              if not listEmpty(replCrefs) then cref::replCrefs := replCrefs; end if;  //remove last cref
+              if not listEmpty(indexes) then _::indexes := indexes; end if;  // remove last index
+              if not listEmpty(replExps) then _::replExps := replExps; end if;  // remove last repLExp
+              newCref := Vectorization.replaceFirstSubsInCref(cref,{DAE.INDEX(newRange)});  // update index
+              replCrefs := newCref::replCrefs;  // prepend new cref
+              replExps := replExp::replExps;
+              indexes := newRange::indexes;  // prepend new idx
+            end if;
+             replCrefs := cref::replCrefs;
+             replExps := replExp::replExps;
+             remCrefs := remCrefs;
+             indexes := idx::indexes;
+          end if;
+        end for;
+    then (indexes,replCrefs,replExps,remCrefs);
+    else
+     equation
+     print("mergeArrayCrefs1- failed for "+ComponentReference.printComponentRefStr(crefIn)+"\n");
+   then fail();
+  end matchcontinue;
+end mergeArrayCrefs1;
+
 
 protected function addExtendReplacement
 "author: Frenkel TUD 2011-04
@@ -895,7 +994,7 @@ algorithm
     case (REPLACEMENTS(hashTable=ht,arrayHashTable=arrHt),src)
       equation
         if not BaseHashTable.hasKey(src,ht) and ComponentReference.crefHaveSubs(src) then
-          cref2 = ComponentReference.crefStripSubs(src);
+         cref2 = ComponentReference.crefStripSubs(src);
           crefs = BaseHashTable.get(cref2,arrHt);
           dst = findAccordingCref(src,crefs,inVariableReplacements);
         else
@@ -936,6 +1035,7 @@ algorithm
         then false;
   end matchcontinue;
 end hasReplacement;
+
 
 public function hasReplacementCrefFirst "
   Outputs true if the replacements contain a rule for the cref
@@ -1867,7 +1967,9 @@ algorithm
     case (BackendDAE.FOR_EQUATION(iter,start,stop,e1_1,e2_1,source,eqAttr),repl,_,_,_)
       equation
         e1_2 = replaceForEquationExp(e1_1,iter,start,stop,repl);
+        e1_2 = ExpressionSimplify.simplify(e1_2);
         e2_2 = replaceForEquationExp(e2_1,iter,start,stop,repl);
+        e2_2 = ExpressionSimplify.simplify(e2_2);
       then
         (BackendDAE.FOR_EQUATION(iter,start,stop,e1_2,e2_2,source,eqAttr)::inAcc,true);
 

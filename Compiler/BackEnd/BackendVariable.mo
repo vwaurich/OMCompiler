@@ -62,6 +62,7 @@ protected import HashSet;
 protected import List;
 protected import System;
 protected import Util;
+protected import Vectorization;
 protected import Types;
 
 /* =======================================================
@@ -3210,6 +3211,7 @@ algorithm
   end match;
 end getVarShared;
 
+
 public function getVar
 "author: PA
   Return a variable(s) and its index(es) in the vector.
@@ -3233,10 +3235,38 @@ algorithm
       list<DAE.ComponentRef> crlst;
       DAE.ComponentRef cr1;
     case (_,_)
-      equation
-        (v,indx) = getVar2(cr, inVariables) "if scalar found, return it";
+      algorithm
+        if ComponentReference.crefHaveSubs(cr) then
+          try
+            // try to find a fitting var
+            //print("We have a range cref "+ComponentReference.printComponentRefStr(cr)+"\n");
+            (v,indx) := getVar2(cr, inVariables) "if scalar found, return it";
+            //print("found a fitting one!\n");
+            indxs := {indx};
+            vLst := {v};
+          else
+            // search all vars for fitting crefs
+            indxs := {};
+            vLst := {};
+            //print("found a nothing good!\n");
+            for indx in List.intRange(varsSize(inVariables)) loop
+              v := getVarAt(inVariables,indx);
+              //print("check var: "+BackendDump.varString(v)+"\n");
+              if Vectorization.crefFitsInVar(v,cr) then
+                //print("HIT!!!!!\n");
+                indxs := indx::indxs;
+                vLst := v::vLst;
+              end if;
+            end for;
+          end try;
+        else
+          // get the simple scalar var
+          (v,indx) := getVar2(cr, inVariables) "if scalar found, return it";
+          indxs := {indx};
+          vLst := {v};
+        end if;
       then
-        ({v},{indx});
+        (vLst,indxs);
     case (_,_) /* check if array or record */
       equation
         crlst = ComponentReference.expandCref(cr,true);

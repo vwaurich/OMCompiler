@@ -705,7 +705,25 @@ algorithm
   end matchcontinue; 
 end replaceExp;
 
-
+public function replaceIteratorWithRangeInCrefInExp
+  input DAE.Exp eIn;
+  input tuple<DAE.Exp,DAE.Exp> tplIn; //iter,range
+  output DAE.Exp eOut;
+  output tuple<DAE.Exp,DAE.Exp> tplOut; //iter,range
+algorithm
+  (eOut,tplOut) := matchcontinue(eIn,tplIn)
+    local
+      DAE.ComponentRef cref;
+      DAE.Exp iter,range;
+      DAE.Type ty;
+  case(DAE.CREF(componentRef=cref, ty=ty),(iter,range))
+    equation
+      cref = replaceIteratorWithRangeInCref(cref,iter,range);
+    then (DAE.CREF(cref,ty),tplIn);
+  else
+    then (eIn,tplIn);
+  end matchcontinue;
+end replaceIteratorWithRangeInCrefInExp;
 
 public function replaceIteratorWithRangeInCref"replaces an iterator subscript with a range expression in a componenter reference"
   input DAE.ComponentRef crefIn;
