@@ -2076,13 +2076,12 @@ public function setEquationAttributes
 algorithm
   outEqn := match (inEqn, inAttr)
     local
-      DAE.ElementSource source;
       list<Integer> dimSize;
-      DAE.Exp lhs;
-      DAE.Exp rhs;
-      DAE.ComponentRef componentRef;
-      Integer size;
       DAE.Algorithm alg;
+      DAE.ComponentRef componentRef;
+      DAE.ElementSource source;
+      DAE.Exp lhs, rhs, start, stop, iter;
+      Integer size;
       DAE.Expand expand;
       BackendDAE.WhenEquation whenEquation;
       list< .DAE.Exp> conditions;
@@ -2112,6 +2111,9 @@ algorithm
 
     case (BackendDAE.IF_EQUATION(conditions=conditions, eqnstrue=eqnstrue, eqnsfalse=eqnsfalse, source=source), _)
     then BackendDAE.IF_EQUATION(conditions, eqnstrue, eqnsfalse, source, inAttr);
+
+    case (BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop, left=lhs, right=rhs, source=source), _)
+    then BackendDAE.FOR_EQUATION(iter, start, stop, lhs, rhs, source, inAttr);
 
     else equation
       Error.addInternalError("./Compiler/BackEnd/BackendEquation.mo: function setEquationAttributes failed", sourceInfo());

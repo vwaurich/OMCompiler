@@ -580,7 +580,7 @@ public function dumpVariables "function dumpVariables"
   input BackendDAE.Variables inVars;
   input String heading;
 algorithm
-  print("\n" + heading + " (" + intString(BackendVariable.varsSize(inVars)) + ")\n" + UNDERLINE + "\n");
+  print("\n" + heading + " (" + intString(BackendVariable.varsSize(inVars)) +", "+intString(BackendVariable.varsScalarSize(inVars))+  ")\n" + UNDERLINE + "\n");
   printVariables(inVars);
   print("\n");
 end dumpVariables;

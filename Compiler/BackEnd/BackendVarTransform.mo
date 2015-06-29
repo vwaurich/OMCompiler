@@ -574,20 +574,20 @@ protected
   HashTable3.HashTable arrHt;
 algorithm
   if ComponentReference.crefHaveSubs(crefIn) then
-	  crefNoSub := ComponentReference.crefStripSubs(crefIn);
-	  if BaseHashTable.hasKey(crefNoSub,arrHtIn) then
-	    crefs := BaseHashTable.get(crefNoSub,arrHtIn);
-	    crefs := List.unique(crefIn::crefs);
-	    (arrHtOut,htOut) := mergeArrayCrefs(crefs,arrHtIn,htIn);
-	    //arrHtOut := BaseHashTable.add((crefNoSub,crefs),arrHtIn);
-	  else
-	    arrHtOut := BaseHashTable.add((crefNoSub,{crefIn}),arrHtIn);
-	    htOut := htIn;
-	  end if;
-	else
-	  arrHtOut := arrHtIn;
-	  htOut := htIn;
-	end if;
+    crefNoSub := ComponentReference.crefStripSubs(crefIn);
+    if BaseHashTable.hasKey(crefNoSub,arrHtIn) then
+      crefs := BaseHashTable.get(crefNoSub,arrHtIn);
+      crefs := List.unique(crefIn::crefs);
+      (arrHtOut,htOut) := mergeArrayCrefs(crefs,arrHtIn,htIn);
+      //arrHtOut := BaseHashTable.add((crefNoSub,crefs),arrHtIn);
+    else
+      arrHtOut := BaseHashTable.add((crefNoSub,{crefIn}),arrHtIn);
+      htOut := htIn;
+    end if;
+  else
+    arrHtOut := arrHtIn;
+    htOut := htIn;
+  end if;
 end addArrayReplacement;
 
 protected function mergeArrayCrefs
@@ -994,7 +994,7 @@ algorithm
     case (REPLACEMENTS(hashTable=ht,arrayHashTable=arrHt),src)
       equation
         if not BaseHashTable.hasKey(src,ht) and ComponentReference.crefHaveSubs(src) then
-         cref2 = ComponentReference.crefStripSubs(src);
+          cref2 = ComponentReference.crefStripSubs(src);
           crefs = BaseHashTable.get(cref2,arrHt);
           dst = findAccordingCref(src,crefs,inVariableReplacements);
         else
@@ -1030,7 +1030,7 @@ algorithm
         _ = getReplacement(inVariableReplacements, src);
       then
         true;
-      else
+    else
       equation
         then false;
   end matchcontinue;
@@ -1228,14 +1228,14 @@ algorithm
   matchcontinue (inExp,inVariableReplacements,inFuncTypeExpExpToBooleanOption)
     local
       DAE.ComponentRef cr;
-      DAE.Exp e,e1_1,e2_1,e1,e2,e3_1,e3;
+      DAE.Exp e,e1_1,e2_1,e1,e2,e3_1,e3,e4,e4_1;
       DAE.Type t,tp;
       VariableReplacements repl;
       Option<FuncTypeExp_ExpToBoolean> cond;
       DAE.Operator op;
       list<DAE.Exp> expl_1,expl;
       Absyn.Path path;
-      Boolean c,c1,c2,c3;
+      Boolean c,c1,c2,c3,c4;
       Integer b,i;
       Absyn.CodeNode a;
       list<list<DAE.Exp>> bexpl_1,bexpl;
@@ -1411,6 +1411,17 @@ algorithm
         (e1_1,_) = replaceExp(e1, repl, cond);
         (iters,true) = replaceExpIters(iters, repl, cond, {}, false);
       then (DAE.REDUCTION(reductionInfo,e1_1,iters),true);
+    case ((e as DAE.SUM(ty = tp,iterator=e1,startIt = e2,endIt = e3,body=e4)),repl,cond)
+      equation
+        true = replaceExpCond(cond, e);
+        (e1_1,c1) = replaceExp(e1, repl, cond);
+        (e2_1,c2) = replaceExp(e2, repl, cond);
+        (e3_1,c3) = replaceExp(e3, repl, cond);
+        (e4_1,c4) = replaceForEquationExp(e4,e1,e2,e3,repl);
+        e4_1 = ExpressionSimplify.simplify(e4_1);
+        true = c1 or c2 or c3 or not Expression.expEqual(e4,e4_1);
+      then
+        (DAE.SUM(tp,e1_1,e2_1,e3_1,e4_1),true);
     case (e,_,_)
       then (e,false);
   end matchcontinue;
@@ -1966,9 +1977,9 @@ algorithm
 
     case (BackendDAE.FOR_EQUATION(iter,start,stop,e1_1,e2_1,source,eqAttr),repl,_,_,_)
       equation
-        e1_2 = replaceForEquationExp(e1_1,iter,start,stop,repl);
+        (e1_2,_) = replaceForEquationExp(e1_1,iter,start,stop,repl);
         e1_2 = ExpressionSimplify.simplify(e1_2);
-        e2_2 = replaceForEquationExp(e2_1,iter,start,stop,repl);
+        (e2_2,_) = replaceForEquationExp(e2_1,iter,start,stop,repl);
         e2_2 = ExpressionSimplify.simplify(e2_2);
       then
         (BackendDAE.FOR_EQUATION(iter,start,stop,e1_2,e2_2,source,eqAttr)::inAcc,true);
@@ -1986,9 +1997,11 @@ protected function replaceForEquationExp"replaces an iterated cref if the replac
   input DAE.Exp stop;
   input VariableReplacements replIn;
   output DAE.Exp eOut;
+  output Boolean changed;
 algorithm
-  eOut := matchcontinue(eIn,iter,start,stop,replIn)
+  (eOut,changed) := matchcontinue(eIn,iter,start,stop,replIn)
     local
+      Boolean b1,b2;
       DAE.Ident ident1;
       DAE.ComponentRef cref;
       DAE.Exp e1,e2,itExp, itExp2,replExp;
@@ -2006,26 +2019,28 @@ algorithm
         (replExp,_) = replaceCref(cref,replIn);
         //print("    got repl exp: "+ExpressionDump.printExpStr(replExp)+"\n");
         (replExp,_) = Expression.traverseExpBottomUp(replExp,Vectorization.replaceSubscriptInCrefExp,{sub});
+        changed = true;
       else
         replExp = eIn;
+        changed = false;
       end if;
-    then replExp;
+    then (replExp,changed);
 
    case (DAE.BINARY(exp1 = e1,operator = op,exp2 = e2),_,_,_,_)
      equation
-        e1 = replaceForEquationExp(e1,iter,start,stop,replIn);
-        e2 = replaceForEquationExp(e2,iter,start,stop,replIn);
-      then DAE.BINARY(e1,op,e2);
+        (e1,b1) = replaceForEquationExp(e1,iter,start,stop,replIn);
+        (e2,b2) = replaceForEquationExp(e2,iter,start,stop,replIn);
+      then (DAE.BINARY(e1,op,e2), b1 or b2);
 
    case (DAE.UNARY(operator = op,exp = e1),_,_,_,_)
      equation
-        e1 = replaceForEquationExp(e1,iter,start,stop,replIn);
-      then DAE.UNARY(op,e1);
+        (e1,changed) = replaceForEquationExp(e1,iter,start,stop,replIn);
+      then (DAE.UNARY(op,e1),changed);
 
   else
     equation
-      (e1,_) = replaceExp(eIn,replIn,NONE());
-    then e1;
+      (e1,changed) = replaceExp(eIn,replIn,NONE());
+    then (e1,changed);
   end matchcontinue;
 end replaceForEquationExp;
 

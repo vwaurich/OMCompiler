@@ -2283,6 +2283,17 @@ algorithm
   n := varsSize(vars);
 end daenumVariables;
 
+public function daenumScalarVariables
+  input BackendDAE.EqSystem syst;
+  output Integer n;
+protected
+ BackendDAE.Variables vars;
+algorithm
+  vars := daeVars(syst);
+  n := varsScalarSize(vars);
+end daenumScalarVariables;
+
+
 /* =======================================================
  *
  *  Section for functions that deals with VariablesArray
@@ -2467,10 +2478,41 @@ public function listVar
 protected
   Integer size;
 algorithm
-  size := listLength(inVarLst);
+  size := listLength(inVarLst);//List.fold(List.map(inVarLst,varSize),intAdd,0);
   outVariables := emptyVarsSized(size);
   outVariables := addVars(listReverse(inVarLst), outVariables);
 end listVar;
+
+public function varSize"gets the size of a var. considers unexpanded array vars"
+  input BackendDAE.Var var;
+  output Integer size = 1;
+protected
+  DAE.ComponentRef cref;
+  list<DAE.Subscript> subs;
+  DAE.Subscript sub;
+algorithm
+  BackendDAE.VAR(varName=cref) := var;
+  subs := ComponentReference.crefSubs(cref);
+  size := List.fold(subs,varSize2,size);
+end varSize;
+
+public function varSize2
+  input DAE.Subscript sub;
+  input Integer sizeIn;
+  output Integer sizeOut;
+algorithm
+  sizeOut := matchcontinue(sub,sizeIn)
+    local
+      Integer i1,i2;
+  case(DAE.INDEX(DAE.RANGE(start=DAE.ICONST(i1),step=NONE(),stop=DAE.ICONST(i2))), _)
+    equation
+      sizeOut = sizeIn*(i2-i1+1);
+  then sizeOut;
+  else
+    then sizeIn;
+  end matchcontinue;
+end varSize2;
+
 
 public function listVarSized "author: Frenkel TUD 2012-05
   Takes BackendDAE.Var list and creates a BackendDAE.Variables structure, see also var_list."
@@ -2542,6 +2584,14 @@ public function varsSize
 algorithm
   BackendDAE.VARIABLES(varArr=BackendDAE.VARIABLE_ARRAY(numberOfElements=outNumVariables)) := inVariables;
 end varsSize;
+
+public function varsScalarSize
+  "Returns the number of scalar variables in the Variables structure."
+  input BackendDAE.Variables inVariables;
+  output Integer outNumVariables;
+algorithm
+  outNumVariables := List.fold(List.map(varList(inVariables),varSize),intAdd,0);
+end varsScalarSize;
 
 protected function varsLoadFactor
   input BackendDAE.Variables inVariables;
@@ -3248,7 +3298,7 @@ algorithm
             // search all vars for fitting crefs
             indxs := {};
             vLst := {};
-            //print("found a nothing good!\n");
+            //print("found nothing good!\n");
             for indx in List.intRange(varsSize(inVariables)) loop
               v := getVarAt(inVariables,indx);
               //print("check var: "+BackendDump.varString(v)+"\n");

@@ -2709,13 +2709,13 @@ algorithm
     // for Equation
     case BackendDAE.FOR_EQUATION(iter=iter,start=start,stop=stop,left=e1,right=e2)
       equation
-        print("e1: "+ExpressionDump.printExpStr(e1)+"\n");
+        //print("e1: "+ExpressionDump.printExpStr(e1)+"\n");
         (e1,_) = Expression.traverseExpBottomUp(e1,BackendArrayVarTransform.replaceIteratorWithRangeInCrefInExp,(iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop)));
-        print("e1_1: "+ExpressionDump.printExpStr(e1)+"\n");
+        //print("e1_1: "+ExpressionDump.printExpStr(e1)+"\n");
 
-        print("e2: "+ExpressionDump.printExpStr(e2)+"\n");
+        //print("e2: "+ExpressionDump.printExpStr(e2)+"\n");
         (e2,_) = Expression.traverseExpBottomUp(e2,BackendArrayVarTransform.replaceIteratorWithRangeInCrefInExp,(iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop)));
-        print("e2_1: "+ExpressionDump.printExpStr(e2)+"\n");
+        //print("e2_1: "+ExpressionDump.printExpStr(e2)+"\n");
 
         lst1 = incidenceRowExp(e1,vars,iRow,functionTree,inIndexType);
         res = incidenceRowExp(e2,vars,lst1,functionTree,inIndexType);
@@ -7167,13 +7167,12 @@ algorithm
 
     case (BackendDAE.EQSYSTEM(matching=BackendDAE.NO_MATCHING()),_,_,(matchingAlgorithmfunc,_),(sssHandler,_,_,_),_)
       equation
-        //  print("SystemSize: " + intString(systemSize(isyst)) + "\n");
         funcs = getFunctions(ishared);
         (syst,_,_,mapEqnIncRow,mapIncRowEqn) = getIncidenceMatrixScalar(isyst,BackendDAE.SOLVABLE(), SOME(funcs));
         match_opts = Util.getOptionOrDefault(inMatchingOptions,(BackendDAE.INDEX_REDUCTION(), BackendDAE.EXACT()));
         arg = IndexReduction.getStructurallySingularSystemHandlerArg(syst,ishared,mapEqnIncRow,mapIncRowEqn);
         // check singular system
-        nvars = BackendVariable.daenumVariables(syst);
+        nvars = BackendVariable.daenumScalarVariables(syst);
         neqns = systemSize(syst);
         syst = Causalize.singularSystemCheck(nvars,neqns,syst,match_opts,matchingAlgorithm,arg,ishared);
         // SimCodeUtil.execStat("transformDAE -> singularSystemCheck " + mAmethodstr);
