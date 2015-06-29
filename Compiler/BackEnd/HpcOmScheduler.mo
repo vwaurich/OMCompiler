@@ -130,7 +130,7 @@ algorithm
   (tmpSchedule,_) := createListSchedule1(nodeList,threadReadyTimes, iTaskGraph, taskGraphT, commCosts, inComps, iSccSimEqMapping, iSimVarMapping, getLocksByPredecessorList, tmpSchedule);
   tmpSchedule := addSuccessorLocksToSchedule(iTaskGraph,addReleaseLocksToSchedule,commCosts,inComps,iSimVarMapping,tmpSchedule);
   //printSchedule(tmpSchedule);
-  oSchedule := tmpSchedule;
+  oSchedule := setScheduleLockIds(tmpSchedule);
 end createListSchedule;
 
 protected function createListSchedule1 "function createListSchedule1
@@ -300,7 +300,7 @@ algorithm
   tmpSchedule := addSuccessorLocksToSchedule(iTaskGraph, addReleaseLocksToSchedule, commCosts, inComps, iSimVarMapping,
                                              tmpSchedule);
   //printSchedule(tmpSchedule);
-  oSchedule := tmpSchedule;
+  oSchedule := setScheduleLockIds(tmpSchedule);
 end createRandomSchedule;
 
 
@@ -493,7 +493,7 @@ algorithm
   threadTasks := Array.map(threadTasks, listReverse);
   tmpSchedule := HpcOmSimCode.THREADSCHEDULE(threadTasks,outgoingDepTasks,{},allCalcTasks);
   //printSchedule(tmpSchedule);
-  oSchedule := tmpSchedule;
+  oSchedule := setScheduleLockIds(tmpSchedule); // set unique lock ids
 end createListScheduleReverse;
 
 protected function addSuccessorLocksToSchedule
@@ -839,7 +839,7 @@ protected function createDepTask "author: marcusw
   input HpcOmSimCode.CommunicationInfo commInfo;
   output HpcOmSimCode.Task oAssignTask;
 algorithm
-  oAssignTask := HpcOmSimCode.DEPTASK(iSourceTask,iTargetTask,iOutgoing,commInfo);
+  oAssignTask := HpcOmSimCode.DEPTASK(iSourceTask,iTargetTask,iOutgoing,0,commInfo);
 end createDepTask;
 
 protected function createDepTaskAndCommunicationInfo "author: marcusw
@@ -2531,7 +2531,7 @@ algorithm
         //tmpSchedule = HpcOmSimCode.THREADSCHEDULE(threadTasks,{},{},allCalcTasks);
         //tmpSchedule = createExtSchedule1(nodeList,extInfoArr, iTaskGraph, taskGraphT, commCosts, inComps, iSccSimEqMapping, iSimVarMapping, getLocksByPredecessorList, tmpSchedule);
         //tmpSchedule = addSuccessorLocksToSchedule(iTaskGraph,addReleaseLocksToSchedule,commCosts,inComps,iSimVarMapping,tmpSchedule);
-      then tmpSchedule;
+      then setScheduleLockIds(tmpSchedule); // set unique lock ids
     else
       equation
         print("HpcOmScheduler.createMetisSchedule not every node has a scheduler-info.\n");
@@ -2684,7 +2684,7 @@ algorithm
         tmpSchedule = createExtSchedule1(nodeList,extInfoArr, iTaskGraph, taskGraphT, commCosts, inComps, iSccSimEqMapping, iSimVarMapping, getLocksByPredecessorList, tmpSchedule);
         tmpSchedule = addSuccessorLocksToSchedule(iTaskGraph,addReleaseLocksToSchedule,commCosts,inComps,iSimVarMapping,tmpSchedule);
         //printSchedule(tmpSchedule);
-      then tmpSchedule;
+      then setScheduleLockIds(tmpSchedule); // set unique lock ids
     else
       equation
         print("HpcOmScheduler.createHMetisSchedule not every node has a scheduler-info.\n");
@@ -3416,9 +3416,11 @@ protected
   list<String> externalFunctionIncludes;
   list<list<SimCode.SimEqSystem>> eqsTmp;
   list<list<SimCode.SimEqSystem>> odeEquations, algebraicEquations;
-  list<SimCode.SimEqSystem> allEquations, startValueEquations, nominalValueEquations, minValueEquations, maxValueEquations, parameterEquations, removedEquations, algorithmAndEquationAsserts, jacobianEquations, equationsForZeroCrossings;
+  list<SimCode.SimEqSystem> allEquations, startValueEquations, nominalValueEquations, minValueEquations,
+                            maxValueEquations, parameterEquations, removedEquations, algorithmAndEquationAsserts,
+                            jacobianEquations, equationsForZeroCrossings;
   list<SimCode.StateSet> stateSets;
-  Boolean useSymbolicInitialization, useHomotopy;
+  Boolean useHomotopy;
   list<SimCode.SimEqSystem> initialEquations, removedInitialEquations, odes;
   list<DAE.Constraint> constraints;
   list<DAE.ClassAttributes> classAttributes;
@@ -3452,49 +3454,74 @@ protected
   SimCodeVar.SimVars vars;
   list<SimCode.Function> functions;
   list<String> labels;
-  Integer  numZeroCrossings, numTimeEvents, numRelations, numMathEventFunctions, numStateVars, numAlgVars, numDiscreteReal, numIntAlgVars, numBoolAlgVars, numAlgAliasVars, numIntAliasVars, numBoolAliasVars, numParams, numIntParams, numBoolParams, numOutVars, numInVars, numExternalObjects, numStringAlgVars, numStringParamVars,
-  numStringAliasVars, numEquations, numLinearSystems, numNonLinearSystems, numMixedSystems, numStateSets, numJacobians, numOptimizeConstraints, numOptimizeFinalConstraints, maxDer;
+  list<BackendDAE.BaseClockPartitionKind> partitionsKind;
+  list<DAE.ClockKind> baseClocks;
+  Integer  numZeroCrossings, numTimeEvents, numRelations, numMathEventFunctions, numStateVars, numAlgVars,
+           numDiscreteReal, numIntAlgVars, numBoolAlgVars, numAlgAliasVars, numIntAliasVars, numBoolAliasVars,
+           numParams, numIntParams, numBoolParams, numOutVars, numInVars, numExternalObjects, numStringAlgVars,
+           numStringParamVars, numStringAliasVars, numEquations, numLinearSystems, numNonLinearSystems,
+           numMixedSystems, numStateSets, numJacobians, numOptimizeConstraints, numOptimizeFinalConstraints, maxDer;
   Option<SimCode.FmiModelStructure> modelStruct;
+
 algorithm
-  SimCode.SIMCODE(modelInfo, literals, recordDecls, externalFunctionIncludes, allEquations, odeEquations, algebraicEquations, useSymbolicInitialization, useHomotopy,
-    initialEquations, removedInitialEquations, startValueEquations, nominalValueEquations, minValueEquations, maxValueEquations, parameterEquations, removedEquations,
-    algorithmAndEquationAsserts,equationsForZeroCrossings, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses, discreteModelVars, extObjInfo,
-    makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, hpcomData, varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT, backendMapping, modelStruct):=simCodeIn;
-  SimCode.MODELINFO(name=name,description=description,directory=directory,varInfo=varInfo,vars=vars,functions=functions,labels=labels, maxDer=maxDer) := modelInfo;
-  SimCode.VARINFO(numZeroCrossings=numZeroCrossings, numTimeEvents=numTimeEvents, numRelations=numRelations, numMathEventFunctions=numMathEventFunctions, numStateVars=numStateVars,
-    numAlgVars=numAlgVars, numDiscreteReal=numDiscreteReal, numIntAlgVars=numIntAlgVars, numBoolAlgVars=numBoolAlgVars, numAlgAliasVars=numAlgAliasVars, numIntAliasVars=numIntAliasVars,
-    numBoolAliasVars=numBoolAliasVars, numParams=numParams, numIntParams=numIntParams, numBoolParams=numBoolParams, numOutVars=numOutVars, numInVars=numInVars,
-    numExternalObjects=numExternalObjects,
-    numStringAlgVars=numStringAlgVars, numStringParamVars=numStringParamVars, numStringAliasVars=numStringAliasVars, numEquations=numEquations, numLinearSystems=numLinearSystems,
-    numNonLinearSystems=numNonLinearSystems, numMixedSystems=numMixedSystems, numStateSets=numStateSets, numJacobians=numJacobians, numOptimizeConstraints=numOptimizeConstraints, numOptimizeFinalConstraints = numOptimizeFinalConstraints) := varInfo;
+  SimCode.SIMCODE( modelInfo, literals, recordDecls, externalFunctionIncludes, allEquations, odeEquations,
+                   algebraicEquations, partitionsKind, baseClocks, useHomotopy,
+                   initialEquations, removedInitialEquations, startValueEquations, nominalValueEquations,
+                   minValueEquations, maxValueEquations, parameterEquations, removedEquations,
+                   algorithmAndEquationAsserts,equationsForZeroCrossings, jacobianEquations, stateSets, constraints,
+                   classAttributes, zeroCrossings, relations, timeEvents, whenClauses, discreteModelVars, extObjInfo,
+                   makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, hpcomData,
+                   varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT, backendMapping, modelStruct ):=simCodeIn;
+  SimCode.MODELINFO( name=name,description=description,directory=directory,varInfo=varInfo,vars=vars,
+                     functions=functions,labels=labels, maxDer=maxDer ) := modelInfo;
+  SimCode.VARINFO( numZeroCrossings=numZeroCrossings, numTimeEvents=numTimeEvents, numRelations=numRelations,
+                   numMathEventFunctions=numMathEventFunctions, numStateVars=numStateVars, numAlgVars=numAlgVars,
+                   numDiscreteReal=numDiscreteReal, numIntAlgVars=numIntAlgVars, numBoolAlgVars=numBoolAlgVars,
+                   numAlgAliasVars=numAlgAliasVars, numIntAliasVars=numIntAliasVars, numBoolAliasVars=numBoolAliasVars,
+                   numParams=numParams, numIntParams=numIntParams, numBoolParams=numBoolParams, numOutVars=numOutVars,
+                   numInVars=numInVars, numExternalObjects=numExternalObjects, numStringAlgVars=numStringAlgVars,
+                   numStringParamVars=numStringParamVars, numStringAliasVars=numStringAliasVars, numEquations=numEquations,
+                   numLinearSystems=numLinearSystems, numNonLinearSystems=numNonLinearSystems, numMixedSystems=numMixedSystems,
+                   numStateSets=numStateSets, numJacobians=numJacobians, numOptimizeConstraints=numOptimizeConstraints,
+                   numOptimizeFinalConstraints = numOptimizeFinalConstraints ) := varInfo;
 
   //reassign new indexes
-  (initialEquations,(idx,ass)) := List.mapFold(initialEquations,TDS_replaceSimEqSysIndexWithUpdate,(1,idxAssIn));
-  (allEquations,(idx,ass)) := List.mapFold(allEquations,TDS_replaceSimEqSysIndexWithUpdate,(idx,ass));
-  (startValueEquations,(idx,ass)) := List.mapFold(startValueEquations,TDS_replaceSimEqSysIndexWithUpdate,(idx,ass));
-  (nominalValueEquations,(idx,ass)) := List.mapFold(nominalValueEquations,TDS_replaceSimEqSysIndexWithUpdate,(idx,ass));
-  (minValueEquations,(idx,ass)) := List.mapFold(minValueEquations,TDS_replaceSimEqSysIndexWithUpdate,(idx,ass));
-  (maxValueEquations,(idx,ass)) := List.mapFold(maxValueEquations,TDS_replaceSimEqSysIndexWithUpdate,(idx,ass));
-  (parameterEquations,(idx,ass)) := List.mapFold(parameterEquations,TDS_replaceSimEqSysIndexWithUpdate,(idx,ass));
-  (algorithmAndEquationAsserts,(idx,ass)) := List.mapFold(algorithmAndEquationAsserts,TDS_replaceSimEqSysIndexWithUpdate,(idx,ass));
+  (initialEquations, (idx, ass)) := List.mapFold(initialEquations, TDS_replaceSimEqSysIndexWithUpdate, (1, idxAssIn));
+  (allEquations, (idx, ass)) := List.mapFold(allEquations, TDS_replaceSimEqSysIndexWithUpdate, (idx, ass));
+  (startValueEquations, (idx, ass)) := List.mapFold(startValueEquations, TDS_replaceSimEqSysIndexWithUpdate, (idx, ass));
+  (nominalValueEquations, (idx, ass)) := List.mapFold(nominalValueEquations, TDS_replaceSimEqSysIndexWithUpdate, (idx, ass));
+  (minValueEquations, (idx, ass)) := List.mapFold(minValueEquations, TDS_replaceSimEqSysIndexWithUpdate, (idx, ass));
+  (maxValueEquations, (idx, ass)) := List.mapFold(maxValueEquations, TDS_replaceSimEqSysIndexWithUpdate, (idx, ass));
+  (parameterEquations, (idx, ass)) := List.mapFold(parameterEquations, TDS_replaceSimEqSysIndexWithUpdate, (idx, ass));
+  (algorithmAndEquationAsserts, (idx, ass)) := List.mapFold(algorithmAndEquationAsserts, TDS_replaceSimEqSysIndexWithUpdate, (idx, ass));
 
   //for collected groups
-  odeEquations := List.mapList1_1(odeEquations,TDS_replaceSimEqSysIndex,ass);
-  algebraicEquations := List.mapList1_1(algebraicEquations,TDS_replaceSimEqSysIndex,ass);
-  equationsForZeroCrossings := List.map1(equationsForZeroCrossings,TDS_replaceSimEqSysIndex,ass);
+  odeEquations := List.mapList1_1(odeEquations, TDS_replaceSimEqSysIndex, ass);
+  algebraicEquations := List.mapList1_1(algebraicEquations, TDS_replaceSimEqSysIndex, ass);
+  equationsForZeroCrossings := List.map1(equationsForZeroCrossings, TDS_replaceSimEqSysIndex, ass);
 
-  jacObts := List.map(jacobianMatrixes,Util.makeOption);
-  jacObts := List.map1(jacObts,TDS_replaceSimEqSysIdxInJacobianMatrix,ass);
-  jacobianMatrixes := List.map(jacObts,Util.getOption);
+  jacObts := List.map(jacobianMatrixes, Util.makeOption);
+  jacObts := List.map1(jacObts, TDS_replaceSimEqSysIdxInJacobianMatrix, ass);
+  jacobianMatrixes := List.map(jacObts, Util.getOption);
 
   numEquations := idx;
 
-  varInfo := SimCode.VARINFO(numZeroCrossings, numTimeEvents, numRelations, numMathEventFunctions, numStateVars, numAlgVars, numDiscreteReal, numIntAlgVars, numBoolAlgVars, numAlgAliasVars, numIntAliasVars, numBoolAliasVars, numParams, numIntParams, numBoolParams, numOutVars, numInVars, numExternalObjects, numStringAlgVars, numStringParamVars,
-    numStringAliasVars, numEquations, numLinearSystems, numNonLinearSystems, numMixedSystems, numStateSets, numJacobians, numOptimizeConstraints, numOptimizeFinalConstraints);
+  varInfo := SimCode.VARINFO( numZeroCrossings, numTimeEvents, numRelations, numMathEventFunctions, numStateVars,
+                              numAlgVars, numDiscreteReal, numIntAlgVars, numBoolAlgVars, numAlgAliasVars, numIntAliasVars,
+                              numBoolAliasVars, numParams, numIntParams, numBoolParams, numOutVars, numInVars,
+                              numExternalObjects, numStringAlgVars, numStringParamVars, numStringAliasVars, numEquations,
+                              numLinearSystems, numNonLinearSystems, numMixedSystems, numStateSets, numJacobians,
+                              numOptimizeConstraints, numOptimizeFinalConstraints );
   modelInfo := SimCode.MODELINFO(name,description,directory,varInfo,vars,functions,labels, maxDer);
-  simCodeOut := SimCode.SIMCODE(modelInfo, literals, recordDecls, externalFunctionIncludes, allEquations, odeEquations, algebraicEquations, useSymbolicInitialization, useHomotopy, initialEquations, removedInitialEquations, startValueEquations, nominalValueEquations, minValueEquations, maxValueEquations,
-    parameterEquations, removedEquations, algorithmAndEquationAsserts, equationsForZeroCrossings, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
-    discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, hpcomData, varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT,backendMapping, modelStruct);
+  simCodeOut := SimCode.SIMCODE( modelInfo, literals, recordDecls, externalFunctionIncludes, allEquations, odeEquations,
+                                 algebraicEquations, partitionsKind, baseClocks, useHomotopy,
+                                 initialEquations, removedInitialEquations, startValueEquations, nominalValueEquations,
+                                 minValueEquations, maxValueEquations, parameterEquations, removedEquations,
+                                 algorithmAndEquationAsserts, equationsForZeroCrossings, jacobianEquations, stateSets,
+                                 constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
+                                 discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes,
+                                 simulationSettingsOpt, fileNamePrefix, hpcomData, varToArrayIndexMapping,
+                                 varToIndexMapping, crefToSimVarHT, backendMapping, modelStruct);
   idxAssOut := ass;
 end TDS_assignNewSimEqSysIdxs;
 
@@ -3522,7 +3549,7 @@ algorithm
     case(SimCode.SES_NONLINEAR(SimCode.NONLINEARSYSTEM(eqs=eqs,crefs=crefs,indexNonLinearSystem=indexNonLinearSystem,jacobianMatrix=jacobianMatrix,linearTearing=linearTearing,homotopySupport=homotopySupport,mixedSystem=mixedSystem)),_)
       equation
         eqs = List.map1(eqs,TDS_replaceSimEqSysIndex,assIn);
-        oldIdx = SimCodeUtil.eqIndex(simEqIn);
+        oldIdx = SimCodeUtil.simEqSystemIndex(simEqIn);
         newIdx = arrayGet(assIn,oldIdx);
         jacobianMatrix = TDS_replaceSimEqSysIdxInJacobianMatrix(jacobianMatrix,assIn);
         simEqSys = SimCode.SES_NONLINEAR(SimCode.NONLINEARSYSTEM(newIdx,eqs,crefs,indexNonLinearSystem,jacobianMatrix,linearTearing,homotopySupport,mixedSystem), NONE());
@@ -3530,14 +3557,14 @@ algorithm
     case(SimCode.SES_LINEAR(SimCode.LINEARSYSTEM(partOfMixed=partOfMixed,vars=vars,beqs=beqs,simJac=simJac,residual=eqs,jacobianMatrix=jacobianMatrix,sources=sources,indexLinearSystem=indexLinearSystem)),ass)
       equation
         eqs = List.map1(eqs,TDS_replaceSimEqSysIndex,ass);
-        oldIdx = SimCodeUtil.eqIndex(simEqIn);
+        oldIdx = SimCodeUtil.simEqSystemIndex(simEqIn);
         newIdx = arrayGet(ass,oldIdx);
         jacobianMatrix = TDS_replaceSimEqSysIdxInJacobianMatrix(jacobianMatrix,ass);
         simEqSys = SimCode.SES_LINEAR(SimCode.LINEARSYSTEM(newIdx,partOfMixed,vars,beqs,simJac,eqs,jacobianMatrix,sources,indexLinearSystem), NONE());
    then simEqSys;
     case(_,ass)
       equation
-        oldIdx = SimCodeUtil.eqIndex(simEqIn);
+        oldIdx = SimCodeUtil.simEqSystemIndex(simEqIn);
         newIdx = arrayGet(ass,oldIdx);
         simEqSys = SimCodeUtil.replaceSimEqSysIndex(simEqIn,newIdx);
    then simEqSys;
@@ -3589,7 +3616,7 @@ algorithm
    then (simEqSys,(newIdx+1,ass));
     case(_,(newIdx,ass))
       equation
-        oldIdx = SimCodeUtil.eqIndex(simEqIn);
+        oldIdx = SimCodeUtil.simEqSystemIndex(simEqIn);
         ass = arrayUpdate(ass,oldIdx,newIdx);
         simEqSys = SimCodeUtil.replaceSimEqSysIndex(simEqIn,newIdx);
    then (simEqSys,(newIdx+1,ass));
@@ -4127,7 +4154,7 @@ algorithm
       list<SimCode.SimEqSystem> eqSysLst;
     case(_,_)
       equation
-      _ = SimCodeUtil.eqIndex(eqSysIn);
+      _ = SimCodeUtil.simEqSystemIndex(eqSysIn);
       pos = List.position1OnTrue(eqSysLstIn,SimCodeUtil.equationIndexEqual,eqSysIn);
       eqSysLst = List.replaceAt(eqSysIn,pos,eqSysLstIn);
     then eqSysLst;
@@ -4780,7 +4807,7 @@ algorithm
   schedule := traverseAndUpdateThreadsInSchedule(schedule,removeLocksFromThread,removeLocks);
   schedule := updateLockIdcsInThreadschedule(schedule,removeLocksFromLockList,removeLocks);
   //printSchedule(schedule);
-  oSchedule := schedule;
+  oSchedule := setScheduleLockIds(schedule); // set unique lock ids
 end createMCPschedule;
 
 protected function MCP_getTaskAssignment "gets the assignment which nodes is computed of which processor for the MCP algorithm.
@@ -6469,6 +6496,130 @@ algorithm
     else iResultList;
   end matchcontinue;
 end revertTaskList;
+
+//----------------
+//  LockIdSetter
+//----------------
+
+protected function setScheduleLockIds "Function creates unique Ids for every  tuple of out and ingoing locks
+	author: mhartung"
+  input HpcOmSimCode.Schedule iSchedule;
+  output HpcOmSimCode.Schedule oSchedule;
+protected
+  array<list<HpcOmSimCode.Task>> allThreadTasks;
+  array<list<HpcOmSimCode.Task>> tmpFoldArray;
+  array<list<HpcOmSimCode.Task>> newAllThreadTasks;
+  list<HpcOmSimCode.Task> scheduledTasks;
+  array<list<tuple<Integer,Integer>>> lockIds; // going to contain all outgoing locks by node to the target node with id: BSP: locks[source_node](target_node,lockId)
+  list<HpcOmSimCode.Task> outgoingDepTasks;
+  list<HpcOmSimCode.Task> newOutgoingDepTasks = {};
+  array<tuple<HpcOmSimCode.Task,Integer>> allCalcTasks;
+  tuple<Integer,Integer> newTuple;
+  HpcOmSimCode.Task sourceTask;
+  HpcOmSimCode.Task targetTask;
+  HpcOmSimCode.Task iterTask;
+  Integer counter;
+  Integer id, sourceTaskId, targetTaskId;
+  Boolean outgoing;
+  HpcOmSimCode.CommunicationInfo communicationInfo;
+algorithm
+ ((HpcOmSimCode.THREADSCHEDULE(allThreadTasks,outgoingDepTasks,scheduledTasks,allCalcTasks))) := iSchedule;
+  lockIds := arrayCreate(arrayLength(allCalcTasks),{});
+  newAllThreadTasks := arrayCreate(arrayLength(allThreadTasks),{});
+  counter := 0;
+  //getting LockIds:
+  for iterTask in outgoingDepTasks loop
+    ((HpcOmSimCode.DEPTASK(sourceTask = sourceTask,targetTask = targetTask,outgoing = outgoing,id = id, communicationInfo = communicationInfo))) := iterTask;
+    HpcOmSimCode.CALCTASK(index = sourceTaskId) := sourceTask;
+    HpcOmSimCode.CALCTASK(index = targetTaskId) := targetTask;
+    newTuple := (targetTaskId,counter);
+    arrayUpdate(lockIds,sourceTaskId,listAppend(arrayGet(lockIds,sourceTaskId),{newTuple}));
+    newOutgoingDepTasks := HpcOmSimCode.DEPTASK(sourceTask,targetTask,outgoing,counter,communicationInfo)::newOutgoingDepTasks;
+    counter := counter +1;
+  end for;
+  //Setting old locks on new labeled Locks
+  tmpFoldArray := arrayCreate(arrayLength(allThreadTasks),{});
+  (newAllThreadTasks,_) := Array.fold(allThreadTasks, function replaceDepTaskIdsByLockIds(lockIds = lockIds),(tmpFoldArray,1));
+  oSchedule := HpcOmSimCode.THREADSCHEDULE(newAllThreadTasks, newOutgoingDepTasks, scheduledTasks, allCalcTasks);
+end setScheduleLockIds;
+
+protected function replaceDepTaskIdsByLockIds
+  input list<HpcOmSimCode.Task> inTasks;
+  input array<list<tuple<Integer,Integer>>> lockIds;
+  input tuple<array<list<HpcOmSimCode.Task>>,Integer> iAllThreadTasks;
+  output tuple<array<list<HpcOmSimCode.Task>>,Integer> oTasks;
+protected
+  array<list<HpcOmSimCode.Task>> allThreadTasks;
+  list<HpcOmSimCode.Task> tmpList;
+  Integer threadId;
+algorithm
+  (allThreadTasks,threadId) := iAllThreadTasks;
+  tmpList := listReverse(List.fold(inTasks, function replaceDepTasksInListByLockIds(lockIds=lockIds),{}));
+  arrayUpdate(allThreadTasks,threadId,tmpList);
+  oTasks:=(allThreadTasks,threadId+1);
+end replaceDepTaskIdsByLockIds;
+
+protected function replaceDepTasksInListByLockIds
+  input HpcOmSimCode.Task inTask;
+  input array<list<tuple<Integer,Integer>>> lockIds;
+  input list<HpcOmSimCode.Task> tmpTaskList;
+  output list<HpcOmSimCode.Task> oList;
+protected
+  HpcOmSimCode.Task tmpTask;
+algorithm
+  tmpTask := findTaskWithLockId(lockIds,inTask);
+  oList := tmpTask::tmpTaskList;
+end replaceDepTasksInListByLockIds;
+
+
+protected function findTaskWithLockId "Function returns	a DepTask with the id regarding lockIds or the identity of the given task"
+  input array<list<tuple<Integer,Integer>>> lockIds;
+  input HpcOmSimCode.Task iTask;
+  output HpcOmSimCode.Task oTask;
+
+protected
+  HpcOmSimCode.Task tmpTask;
+  HpcOmSimCode.Task sourceTask;
+  HpcOmSimCode.Task targetTask;
+  Boolean outgoing;
+  Integer lockId, sourceTaskId , targetTaskId;
+  HpcOmSimCode.CommunicationInfo communicationInfo;
+algorithm
+  oTask := match(iTask)
+    case(HpcOmSimCode.DEPTASK(sourceTask = sourceTask,targetTask = targetTask,outgoing = outgoing,communicationInfo = communicationInfo))
+      equation
+          // Finding Nemo
+          HpcOmSimCode.CALCTASK(index = sourceTaskId) = sourceTask;
+          HpcOmSimCode.CALCTASK(index = targetTaskId) = targetTask;
+          lockId = findInIntTuple1(arrayGet(lockIds,sourceTaskId),targetTaskId);
+          tmpTask = HpcOmSimCode.DEPTASK(sourceTask,targetTask,outgoing,lockId,communicationInfo);
+      then tmpTask;
+    else
+    then iTask;
+  end match;
+end findTaskWithLockId;
+
+protected function findInIntTuple1
+  input list<tuple<Integer,Integer>> liste;
+  input Integer toFind;
+  output Integer secondElement;
+
+protected
+  Integer first, second;
+  tuple<Integer,Integer> iter;
+
+algorithm
+  for iter in liste loop
+    (first,second) := iter;
+    if intEq(first,toFind) then
+
+      secondElement := second;
+      return;
+    end if;
+  end for;
+
+end findInIntTuple1;
+
 
 protected function convertFixedLevelScheduleToTaskListsForLevel
   "Convert a level task list into a task list for each thread.

@@ -1,7 +1,7 @@
 /*
  * This file is part of OpenModelica.
  *
- * Copyright (c) 1998-2014, Open Source Modelica Consortium (OSMC),
+ * Copyright (c) 1998-2015, Open Source Modelica Consortium (OSMC),
  * c/o Linköpings universitet, Department of Computer and Information Science,
  * SE-58183 Linköping, Sweden.
  *
@@ -33,8 +33,6 @@ encapsulated package Flags
 " file:        Flags.mo
   package:     Flags
   description: Tools for using compiler flags.
-
-  RCS: $Id$
 
   This package contains function for using compiler flags. There are two types
   of flags, debug flag and configuration flags. The flags are stored and
@@ -357,7 +355,7 @@ constant DebugFlag PARTLINTORNSYSTEM = DEBUG_FLAG(94, "partlintornsystem", false
 constant DebugFlag DUMP_DISCRETEVARS_INFO = DEBUG_FLAG(95, "discreteinfo", false,
   Util.gettext("Enables dumping of discrete variables. Extends -d=backenddaeinfo."));
 constant DebugFlag ADDITIONAL_GRAPHVIZ_DUMP = DEBUG_FLAG(96, "graphvizDump", false,
-  Util.gettext("Activates additional graphviz dumps (as *.dot files). It can be used in addition to one of the following flags: {dumpdaelow|dumpinitialsystems|dumpindxdae}."));
+  Util.gettext("Activates additional graphviz dumps (as .dot files). It can be used in addition to one of the following flags: {dumpdaelow|dumpinitialsystems|dumpindxdae}."));
 constant DebugFlag INFO_XML_OPERATIONS = DEBUG_FLAG(97, "infoXmlOperations", false,
   Util.gettext("Enables output of the operations in the _info.xml file when translating models."));
 constant DebugFlag HPCOM_DUMP = DEBUG_FLAG(98, "hpcomDump", false,
@@ -430,22 +428,24 @@ constant DebugFlag ADVANCE_TEARING = DEBUG_FLAG(130, "advanceTearing", false,
   Util.gettext("Using ExpressionSolve in adjacencyRowEnhanced"));
 constant DebugFlag CONSTJAC = DEBUG_FLAG(131, "constjac", false,
   Util.gettext("solves linear systems with const jacobian and variable b-Vector symbolically"));
-constant DebugFlag EXTENDS_DYN_OPT = DEBUG_FLAG(132, "extendsDynOpt", false,
-  Util.gettext("generat extends NLP, move loops in the optimization problem as constraints. hint: using intial guess from file!"));
-constant DebugFlag REDUCE_DYN_OPT = DEBUG_FLAG(133, "reduceDynOpt", false,
+constant DebugFlag REDUCE_DYN_OPT = DEBUG_FLAG(132, "reduceDynOpt", false,
   Util.gettext("remove eqs which not need for the calculations of cost and constraints"));
-constant DebugFlag VISUAL_XML = DEBUG_FLAG(134, "visxml", false,
+constant DebugFlag VISUAL_XML = DEBUG_FLAG(133, "visxml", false,
   Util.gettext("Outputs a xml-file that contains information for visualization."));
-constant DebugFlag ADD_SCALED_VARS = DEBUG_FLAG(135, "addScaledVars", false,
+constant DebugFlag ADD_SCALED_VARS = DEBUG_FLAG(134, "addScaledVars", false,
   Util.gettext("Adds an alias equation var_nrom = var/nominal where var is state"));
-constant DebugFlag ADD_SCALED_VARS_INPUT = DEBUG_FLAG(136, "addScaledVarsInput", false,
+constant DebugFlag ADD_SCALED_VARS_INPUT = DEBUG_FLAG(135, "addScaledVarsInput", false,
   Util.gettext("Adds an alias equation var_nrom = var/nominal where var is input"));
-constant DebugFlag VECTORIZE = DEBUG_FLAG(137, "vectorize", false,
+constant DebugFlag VECTORIZE = DEBUG_FLAG(136, "vectorize", false,
   Util.gettext("Activates vectorization in the backend."));
-constant DebugFlag CHECK_EXT_LIBS = DEBUG_FLAG(138, "buildExternalLibs", true,
+constant DebugFlag CHECK_EXT_LIBS = DEBUG_FLAG(137, "buildExternalLibs", true,
   Util.gettext("Use the autotools project in the Resources folder of the library to build missing external libraries."));
-constant DebugFlag RUNTIME_STATIC_LINKING = DEBUG_FLAG(139, "runtimeStaticLinking", false,
+constant DebugFlag RUNTIME_STATIC_LINKING = DEBUG_FLAG(138, "runtimeStaticLinking", false,
   Util.gettext("Use the static simulation runtime libraries (C++ simulation runtime)."));
+constant DebugFlag DYNAMIC_TEARING_INFO = DEBUG_FLAG(139, "dynamicTearingInfo", false,
+  Util.gettext("Dumps information about the strict and casual sets of the tearing system."));
+constant DebugFlag SORT_EQNS_AND_VARS = DEBUG_FLAG(140, "sortEqnsAndVars", false,
+  Util.gettext("Heuristical sorting for equations and variables. Influenced: removeSimpleEquations and tearing."));
 
 // This is a list of all debug flags, to keep track of which flags are used. A
 // flag can not be used unless it's in this list, and the list is checked at
@@ -584,14 +584,15 @@ constant list<DebugFlag> allDebugFlags = {
   NO_PARTITIONING,
   ADVANCE_TEARING,
   CONSTJAC,
-  EXTENDS_DYN_OPT,
   REDUCE_DYN_OPT,
   VISUAL_XML,
   ADD_SCALED_VARS,
   ADD_SCALED_VARS_INPUT,
   VECTORIZE,
   CHECK_EXT_LIBS,
-  RUNTIME_STATIC_LINKING
+  RUNTIME_STATIC_LINKING,
+  DYNAMIC_TEARING_INFO,
+  SORT_EQNS_AND_VARS
 };
 
 public
@@ -664,7 +665,8 @@ constant ConfigFlag PRE_OPT_MODULES = CONFIG_FLAG(12, "preOptModules",
     "comSubExp",
     // "addInitialStmtsToAlgorithms",
     "resolveLoops",
-    "evalFunc"
+    "evalFunc",
+    "sortEqnsVars"
     }),
   SOME(STRING_DESC_OPTION({
     ("CSE_EachCall", Util.gettext("Common Function Call Elimination")),
@@ -744,6 +746,7 @@ constant ConfigFlag INDEX_REDUCTION_METHOD = CONFIG_FLAG(15, "indexReductionMeth
 constant ConfigFlag POST_OPT_MODULES = CONFIG_FLAG(16, "postOptModules",
   NONE(), EXTERNAL(), STRING_LIST_FLAG({
     "lateInlineFunction",
+    "simplifyConstraints",
     "CSE",
     "relaxSystem",
     "inlineArrayEqn",
@@ -794,7 +797,7 @@ constant ConfigFlag POST_OPT_MODULES = CONFIG_FLAG(16, "postOptModules",
     ("countOperations", Util.gettext("Count the mathematic operations of the system.")),
     ("dumpComponentsGraphStr", Util.notrans("DESCRIBE ME")),
     ("generateSymbolicJacobian", Util.gettext("Generates symbolic jacobian matrix, where der(x) is differentiated w.r.t. x. This matrix can be used to simulate with dasslColorSymJac.")),
-    ("generateSymbolicLinearization", Util.gettext("Generates symbolic linearization matrixes A,B,C,D for linear model:\n\t\t\\dot x = Ax + Bu\n\t\ty = Cx +Du")),
+    ("generateSymbolicLinearization", Util.gettext("Generates symbolic linearization matrixes A,B,C,D for linear model:\n\t\t:math:`\\dot{x} = Ax + Bu`\n\t:math:`ty = Cx +Du`")),
     ("removeUnusedFunctions", Util.gettext("Removed all unused functions from functionTree.")),
     ("simplifyTimeIndepFuncCalls", Util.gettext("Simplifies time independent built in function calls like pre(param) -> param, der(param) -> 0.0, change(param) -> false, edge(param) -> false.")),
     ("inputDerivativesUsed", Util.gettext("Checks if derivatives of inputs are need to calculate the model.")),
@@ -993,7 +996,7 @@ constant ConfigFlag GENERATE_SYMBOLIC_JACOBIAN = CONFIG_FLAG(55, "generateSymbol
 
 constant ConfigFlag GENERATE_SYMBOLIC_LINEARIZATION = CONFIG_FLAG(56, "generateSymbolicLinearization",
   NONE(), EXTERNAL(), BOOL_FLAG(false), NONE(),
-  Util.gettext("Generates symbolic linearization matrixes A,B,C,D for linear model:\n\t\t\\dot x = Ax + Bu\n\t\ty = Cx +Du"));
+  Util.gettext("Generates symbolic linearization matrixes A,B,C,D for linear model:\n\t\t:math:`\\dot x = Ax + Bu`\n\t\t:math:`y = Cx +Du`"));
 
 constant ConfigFlag INT_ENUM_CONVERSION = CONFIG_FLAG(57, "intEnumConversion",
   NONE(), EXTERNAL(), BOOL_FLAG(false), NONE(),
@@ -1005,7 +1008,8 @@ constant ConfigFlag PROFILING_LEVEL = CONFIG_FLAG(58, "profiling",
     ("blocks",Util.gettext("Generate code for profiling function calls as well as linear and non-linear systems of equations")),
     ("blocks+html",Util.gettext("Like blocks, but also run xsltproc and gnuplot to generate an html report")),
     ("all",Util.gettext("Generate code for profiling of all functions and equations")),
-    ("all_perf",Util.gettext("Generate code for profiling of all functions and equations with additional performance data using the papi-interface (cpp-runtime)"))
+    ("all_perf",Util.gettext("Generate code for profiling of all functions and equations with additional performance data using the papi-interface (cpp-runtime)")),
+    ("all_stat",Util.gettext("Generate code for profiling of all functions and equations with additional statistics (cpp-runtime)"))
     })),
   Util.gettext("Sets the profiling level to use. Profiled equations and functions record execution time and count for each time step taken by the integrator."));
 
@@ -1055,7 +1059,7 @@ constant ConfigFlag REMOVE_SIMPLE_EQUATIONS = CONFIG_FLAG(67, "removeSimpleEquat
 
 constant ConfigFlag DYNAMIC_TEARING = CONFIG_FLAG(68, "dynamicTearing",
   NONE(), EXTERNAL(), BOOL_FLAG(false), NONE(),
-  Util.gettext("Activates dynamic tearing (TearingSet can be changed automatically during runtime)"));
+  Util.gettext("Activates dynamic tearing (TearingSet can be changed automatically during runtime, strict set vs. casual set.)"));
 
 constant ConfigFlag SYM_EULER = CONFIG_FLAG(69, "symEuler",
   NONE(), EXTERNAL(), BOOL_FLAG(false), NONE(),
@@ -1064,6 +1068,20 @@ constant ConfigFlag SYM_EULER = CONFIG_FLAG(69, "symEuler",
 constant ConfigFlag ADD_TIME_AS_STATE = CONFIG_FLAG(70,
   "addTimeAsState", NONE(), INTERNAL(), BOOL_FLAG(false), NONE(),
   Util.gettext("Experimental feature: this repaces each occurrence of variable time with a new introduced state $time with equation der($time) = 1.0"));
+
+constant ConfigFlag LOOP2CON = CONFIG_FLAG(71, "loop2con",
+  NONE(), EXTERNAL(), STRING_FLAG("none"),
+  SOME(STRING_DESC_OPTION({
+    ("none", Util.gettext("Disables module")),
+    ("lin", Util.gettext("linear loops --> constraints.")),
+    ("noLin", Util.gettext("no linear loops --> constraints.")),
+    ("all", Util.gettext("loops --> constraints."))})),
+    Util.gettext("Specifies method that transform loops in constraints. hint: using intial guess from file!"));
+
+constant ConfigFlag FORCE_TEARING = CONFIG_FLAG(72, "forceTearing",
+  NONE(), EXTERNAL(), BOOL_FLAG(false), NONE(),
+  Util.gettext("Use tearing set even if it is not smaller than the original component.)"));
+
 
 protected
 // This is a list of all configuration flags. A flag can not be used unless it's
@@ -1139,7 +1157,9 @@ constant list<ConfigFlag> allConfigFlags = {
   REMOVE_SIMPLE_EQUATIONS,
   DYNAMIC_TEARING,
   SYM_EULER,
-  ADD_TIME_AS_STATE
+  ADD_TIME_AS_STATE,
+  LOOP2CON,
+  FORCE_TEARING
 };
 
 public function new
@@ -1975,6 +1995,8 @@ algorithm
 
     case {"omc"} then printUsage();
 
+    case {"omcall-sphinxoutput"} then printUsageSphinxAll();
+
     //case {"mos"} then System.gettext("TODO: Write help-text");
 
     case {"topics"}
@@ -1995,14 +2017,19 @@ algorithm
 
     case {"simulation"}
       equation
-        help = System.gettext("The simulation executable takes the following flags:\n") + System.getSimulationHelpText(true);
+        help = System.gettext("The simulation executable takes the following flags:\n\n") + System.getSimulationHelpText(true);
+      then help;
+
+    case {"simulation-sphinxoutput"}
+      equation
+        help = System.gettext("The simulation executable takes the following flags:\n\n") + System.getSimulationHelpText(true,sphinx=true);
       then help;
 
     case {"debug"}
       equation
         str1 = System.gettext("The debug flag takes a comma-separated list of flags which are used by the\ncompiler for debugging or experimental purposes.\nFlags prefixed with \"-\" or \"no\" will be disabled.\n");
         str2 = System.gettext("The available flags are (+ are enabled by default, - are disabled):\n\n");
-        strs = List.map(List.sort(allDebugFlags,compareDebugFlags), printDebugFlag);
+        strs = list(printDebugFlag(flag) for flag in List.sort(allDebugFlags,compareDebugFlags));
         help = stringAppendList(str1 :: str2 :: strs);
       then help;
 
@@ -2104,7 +2131,7 @@ public function printUsage
 algorithm
   Print.clearBuf();
   Print.printBuf("OpenModelica Compiler "); Print.printBuf(Settings.getVersionNr()); Print.printBuf("\n");
-  Print.printBuf(System.gettext("Copyright © 2014 Open Source Modelica Consortium (OSMC)\n"));
+  Print.printBuf(System.gettext("Copyright © 2015 Open Source Modelica Consortium (OSMC)\n"));
   Print.printBuf(System.gettext("Distributed under OMSC-PL and GPL, see www.openmodelica.org\n\n"));
   //Print.printBuf("Please check the System Guide for full information about flags.\n");
   Print.printBuf(System.gettext("Usage: omc [Options] (Model.mo | Script.mos) [Libraries | .mo-files] \n* Libraries: Fully qualified names of libraries to load before processing Model or Script.\n             The libraries should be separated by spaces: Lib1 Lib2 ... LibN.\n"));
@@ -2130,6 +2157,63 @@ algorithm
   usage := Print.getString();
   Print.clearBuf();
 end printUsage;
+
+public function printUsageSphinxAll
+  "Prints out the usage text for the compiler."
+  output String usage;
+protected
+  String s;
+algorithm
+  Print.clearBuf();
+  s := "OpenModelica Compiler Flags";
+  Print.printBuf(s);
+  Print.printBuf("\n");
+  Print.printBuf(sum("=" for e in 1:stringLength(s)));
+  Print.printBuf("\n");
+  Print.printBuf(System.gettext("Usage: omc [Options] (Model.mo | Script.mos) [Libraries | .mo-files]\n\n* Libraries: Fully qualified names of libraries to load before processing Model or Script.\n  The libraries should be separated by spaces: Lib1 Lib2 ... LibN.\n"));
+  Print.printBuf("\n.. _omcflags-options :\n\n");
+  s := System.gettext("Options");
+  Print.printBuf(s);
+  Print.printBuf("\n");
+  Print.printBuf(sum("-" for e in 1:stringLength(s)));
+  Print.printBuf("\n\n");
+  for flag in allConfigFlags loop
+    Print.printBuf(printConfigFlagSphinx(flag));
+  end for;
+
+  Print.printBuf("\n.. _omcflag-debug-section:\n\n");
+  s := System.gettext("Debug flags");
+  Print.printBuf(s);
+  Print.printBuf("\n");
+  Print.printBuf(sum("-" for e in 1:stringLength(s)));
+  Print.printBuf("\n\n");
+  Print.printBuf(System.gettext("The debug flag takes a comma-separated list of flags which are used by the\ncompiler for debugging or experimental purposes.\nFlags prefixed with \"-\" or \"no\" will be disabled.\n"));
+  Print.printBuf(System.gettext("The available flags are (+ are enabled by default, - are disabled):\n\n"));
+  for flag in List.sort(allDebugFlags,compareDebugFlags) loop
+    Print.printBuf(printDebugFlag(flag, sphinx=true));
+  end for;
+
+  Print.printBuf("\n.. _omcflag-optmodules-section:\n\n");
+  s := System.gettext("Flags for Optimization Modules");
+  Print.printBuf(s);
+  Print.printBuf("\n");
+  Print.printBuf(sum("-" for e in 1:stringLength(s)));
+  Print.printBuf("\n\n");
+
+  Print.printBuf("Flags that determine which symbolic methods are used to produce the causalized equation system.\n\n");
+
+  Print.printBuf(System.gettext("The :ref:`--preOptModules <omcflag-preOptModules>` flag sets the optimization modules which are used before the\nmatching and index reduction in the back end. These modules are specified as a comma-separated list."));
+  Print.printBuf("\n\n");
+  Print.printBuf(System.gettext("The :ref:`--matchingAlgorithm <omcflag-matchingAlgorithm>` sets the method that is used for the matching algorithm, after the pre optimization modules."));
+  Print.printBuf("\n\n");
+  Print.printBuf(System.gettext("The :ref:`--indexReductionMethod <omcflag-indexReductionMethod>` sets the method that is used for the index reduction, after the pre optimization modules."));
+  Print.printBuf("\n\n");
+  Print.printBuf(System.gettext("The :ref:`--postOptModules <omcflag-postOptModules>` then sets the optimization modules which are used after the index reduction, specified as a comma-separated list."));
+  Print.printBuf("\n\n");
+
+  usage := Print.getString();
+  Print.clearBuf();
+end printUsageSphinxAll;
 
 public function printAllConfigFlags
   "Prints all configuration flags to a string."
@@ -2166,23 +2250,51 @@ algorithm
   end match;
 end printConfigFlag;
 
-protected function printConfigFlagName
-  "Prints out the name of a configuration flag, formatted for use by
-   printConfigFlag."
+protected function printConfigFlagSphinx
+  "Prints a configuration flag to a restructured text string."
   input ConfigFlag inFlag;
   output String outString;
 algorithm
   outString := match(inFlag)
     local
+      Util.TranslatableContent desc;
+      String name, longName, desc_str, flag_str, delim_str, opt_str;
+      list<String> wrapped_str;
+
+    case CONFIG_FLAG(visibility = INTERNAL()) then "";
+
+    case CONFIG_FLAG(description = desc)
+      equation
+        desc_str = Util.translateContent(desc);
+        desc_str = System.stringReplace(desc_str, "--help=debug", ":ref:`--help=debug <omcflag-debug-section>`");
+        desc_str = System.stringReplace(desc_str, "--help=optmodules", ":ref:`--help=optmodules <omcflag-optmodules-section>`");
+        (name,longName) = printConfigFlagName(inFlag,sphinx=true);
+        opt_str = printValidOptionsSphinx(inFlag);
+        flag_str = stringAppendList({".. _omcflag-", longName, ":\n\n:ref:`", name, "<omcflag-",longName,">`\n\n", desc_str, "\n", opt_str + "\n"});
+      then flag_str;
+
+  end match;
+end printConfigFlagSphinx;
+
+protected function printConfigFlagName
+  "Prints out the name of a configuration flag, formatted for use by
+   printConfigFlag."
+  input ConfigFlag inFlag;
+  input Boolean sphinx=false;
+  output String outString;
+  output String longName;
+algorithm
+  (outString,longName) := match(inFlag)
+    local
       String name, shortname;
 
     case CONFIG_FLAG(name = name, shortname = SOME(shortname))
       equation
-        shortname = Util.stringPadLeft("-" + shortname, 4, " ");
-      then stringAppendList({shortname, ", --", name});
+        shortname = if sphinx then "-" + shortname else Util.stringPadLeft("-" + shortname, 4, " ");
+      then (stringAppendList({shortname, ", --", name}), name);
 
     case CONFIG_FLAG(name = name, shortname = NONE())
-      then "      --" + name;
+      then ((if sphinx then "--" else "      --") + name, name);
 
   end match;
 end printConfigFlagName;
@@ -2211,21 +2323,76 @@ algorithm
     case CONFIG_FLAG(validOptions = SOME(STRING_DESC_OPTION(options = descl)))
       equation
         opt_str = "\n" + descriptionIndent + "   " + System.gettext("Valid options:") + "\n" +
-          stringAppendList(List.map(descl, printFlagOptionDescShort));
+          stringAppendList(list(printFlagOptionDescShort(d) for d in descl));
       then
         opt_str;
   end match;
 end printValidOptions;
 
+protected function printValidOptionsSphinx
+  "Prints out the valid options of a configuration flag to a string."
+  input ConfigFlag inFlag;
+  output String outString;
+algorithm
+  outString := match(inFlag)
+    local
+      list<String> strl;
+      String opt_str;
+      list<tuple<String, Util.TranslatableContent>> descl;
+
+    case CONFIG_FLAG(validOptions = NONE()) then "\n" + defaultFlagSphinx(inFlag.defaultValue) + "\n";
+    case CONFIG_FLAG(validOptions = SOME(STRING_OPTION(options = strl)))
+      equation
+        opt_str = "\n" + defaultFlagSphinx(inFlag.defaultValue) + " " + System.gettext("Valid options") + ":\n\n" +
+          sum("* " + s + "\n" for s in strl);
+      then opt_str;
+    case CONFIG_FLAG(validOptions = SOME(STRING_DESC_OPTION(options = descl)))
+      equation
+        opt_str = "\n" + defaultFlagSphinx(inFlag.defaultValue) + " " + System.gettext("Valid options") + ":\n\n" +
+          sum(printFlagOptionDesc(s, sphinx=true) for s in descl);
+      then
+        opt_str;
+  end match;
+end printValidOptionsSphinx;
+
+protected function defaultFlagSphinx
+  input FlagData flag;
+  output String str;
+algorithm
+  str := matchcontinue flag
+    local
+      Integer i;
+    case BOOL_FLAG() then System.gettext("Boolean (default")+" ``" + boolString(flag.data) + "``).";
+    case INT_FLAG() then System.gettext("Integer (default")+" ``" + intString(flag.data) + "``).";
+    case REAL_FLAG() then System.gettext("Real (default")+" ``" + realString(flag.data) + "``).";
+    case STRING_FLAG("") then System.gettext("String (default *empty*).");
+    case STRING_FLAG() then System.gettext("String (default")+" " + flag.data + ").";
+    case STRING_LIST_FLAG() then System.gettext("String list (default *empty*).");
+    case STRING_LIST_FLAG() then System.gettext("String list (default")+" " + stringDelimitList(flag.data, ",") + ").";
+    case ENUM_FLAG()
+      algorithm
+        for f in flag.validValues loop
+          (str,i) := f;
+          if i==flag.data then
+            str := System.gettext("String (default ")+" " + str + ").";
+            return;
+          end if;
+        end for;
+      then "#ENUM_FLAG Failed#" + anyString(flag);
+    else "Unknown default value" + anyString(flag);
+  end matchcontinue;
+end defaultFlagSphinx;
+
 protected function printFlagOptionDescShort
   "Prints out the name of a flag option."
   input tuple<String, Util.TranslatableContent> inOption;
+  input Boolean sphinx=false;
   output String outString;
 protected
   String name;
 algorithm
   (name, _) := inOption;
-  outString := descriptionIndent + "    * " + name + "\n";
+  outString := (if sphinx then "* " else descriptionIndent + "    * ") + name + "\n";
 end printFlagOptionDescShort;
 
 protected function printFlagValidOptionsDesc
@@ -2237,12 +2404,42 @@ protected
   list<tuple<String, Util.TranslatableContent>> options;
 algorithm
   CONFIG_FLAG(validOptions = SOME(STRING_DESC_OPTION(options = options))) := inFlag;
-  outString := stringAppendList(List.map(options, printFlagOptionDesc));
+  outString := sum(printFlagOptionDesc(o) for o in options);
 end printFlagValidOptionsDesc;
+
+protected function sphinxMathMode
+  input String s;
+  output String o = s;
+protected
+  Integer i;
+  list<String> strs;
+  String s1,s2,s3;
+algorithm
+  (i,strs) := System.regex(o, "^(.*)[$]([^$]*)[$](.*)$", 4, extended=true);
+  if i==4 then
+    _::s1::s2::s3::_ := strs;
+    o := s1 + " :math:`" + s2 + "` " + s3;
+  end if;
+end sphinxMathMode;
+
+protected function removeSphinxMathMode
+  input String s;
+  output String o = s;
+protected
+  Integer i;
+  list<String> strs;
+  String s1,s2,s3;
+algorithm
+  (i,strs) := System.regex(o, "^(.*):math:`([^`]*)[`](.*)$", 4, extended=true);
+  if i==4 then
+    o := removeSphinxMathMode(stringAppendList(listRest(strs)));
+  end if;
+end removeSphinxMathMode;
 
 protected function printFlagOptionDesc
   "Helper function to printFlagValidOptionsDesc."
   input tuple<String, Util.TranslatableContent> inOption;
+  input Boolean sphinx=false;
   output String outString;
 protected
   Util.TranslatableContent desc;
@@ -2250,14 +2447,20 @@ protected
 algorithm
   (name, desc) := inOption;
   desc_str := Util.translateContent(desc);
-  str := Util.stringPadRight(" * " + name + " ", 30, " ") + desc_str;
-  outString := stringDelimitList(
-    StringUtil.wordWrap(str, System.getTerminalWidth(), descriptionIndent + "    "), "\n") + "\n";
+  if sphinx then
+    desc_str := sum(System.trim(s) for s in System.strtok(desc_str, "\n"));
+    outString := "* " + name + " (" + desc_str + ")\n";
+  else
+    str := Util.stringPadRight(" * " + name + " ", 30, " ") + removeSphinxMathMode(desc_str);
+    outString := stringDelimitList(
+      StringUtil.wordWrap(str, System.getTerminalWidth(), descriptionIndent + "    "), "\n") + "\n";
+  end if;
 end printFlagOptionDesc;
 
 protected function printDebugFlag
   "Prints out name and description of a debug flag."
   input DebugFlag inFlag;
+  input Boolean sphinx=false;
   output String outString;
 protected
   Util.TranslatableContent desc;
@@ -2266,9 +2469,16 @@ protected
 algorithm
   DEBUG_FLAG(default = default, name = name, description = desc) := inFlag;
   desc_str := Util.translateContent(desc);
-  outString := Util.stringPadRight((if default then " + " else " - ") + name + " ", 26, " ") + desc_str;
-  outString := stringDelimitList(StringUtil.wordWrap(outString, System.getTerminalWidth(),
-    descriptionIndent), "\n") + "\n";
+  if sphinx then
+    desc_str := stringDelimitList(list(System.trim(s) for s in System.strtok(desc_str, "\n")), "\n  ");
+    outString := "\n.. _omcflag-debug-"+name+":\n\n" +
+      ":ref:`" + name + " <omcflag-debug-"+name+">`" +
+      " (default: "+(if default then "on" else "off")+")\n  " + desc_str + "\n";
+  else
+    outString := Util.stringPadRight((if default then " + " else " - ") + name + " ", 26, " ") + removeSphinxMathMode(desc_str);
+    outString := stringDelimitList(StringUtil.wordWrap(outString, System.getTerminalWidth(),
+      descriptionIndent), "\n") + "\n";
+  end if;
 end printDebugFlag;
 
 public function debugFlagName

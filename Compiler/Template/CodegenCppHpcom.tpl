@@ -60,12 +60,12 @@ template translateModel(SimCode simCode)
       let() = textFile(simulationFunctionsFile(simCode, &extraFuncsFun, &extraFuncsDeclFun, "", modelInfo.functions, literals,externalFunctionIncludes,stateDerVectorName,false), 'OMCpp<%fileNamePrefix%>Functions.cpp')
       let &extraFuncsInit = buffer "" /*BUFD*/
       let &extraFuncsDeclInit = buffer "" /*BUFD*/
-      let() = textFile(simulationInitHeaderFile(simCode, &extraFuncsInit, &extraFuncsDeclInit, ""), 'OMCpp<%fileNamePrefix%>Initialize.h')
       let() = textFile(simulationInitCppFile(simCode ,&extraFuncsInit, &extraFuncsDeclInit, "", stateDerVectorName, false), 'OMCpp<%fileNamePrefix%>Initialize.cpp')
       let() = textFile(simulationInitParameterCppFile(simCode, &extraFuncsInit, &extraFuncsDeclInit, "", stateDerVectorName, false), 'OMCpp<%fileNamePrefix%>InitializeParameter.cpp')
-      let() = textFile(simulationInitExtVarsCppFile(simCode, &extraFuncsInit, &extraFuncsDeclInit, "", stateDerVectorName, false), 'OMCpp<%fileNamePrefix%>InitializeExtVars.cpp')
       let() = textFile(simulationInitAliasVarsCppFile(simCode, &extraFuncsInit, &extraFuncsDeclInit, "", stateDerVectorName, false), 'OMCpp<%fileNamePrefix%>InitializeAliasVars.cpp')
       let() = textFile(simulationInitAlgVarsCppFile(simCode, &extraFuncsInit, &extraFuncsDeclInit, "", stateDerVectorName, false), 'OMCpp<%fileNamePrefix%>InitializeAlgVars.cpp')
+      let()= textFile(simulationInitExtVarsCppFile(simCode, &extraFuncsInit, &extraFuncsDeclInit, '<%className%>Initialize', stateDerVectorName, false),'OMCpp<%fileNamePrefix%>InitializeExtVars.cpp')
+      let() = textFile(simulationInitHeaderFile(simCode, &extraFuncsInit, &extraFuncsDeclInit, ""), 'OMCpp<%fileNamePrefix%>Initialize.h')
 
       let() = textFile(simulationJacobianHeaderFile(simCode, &extraFuncs, &extraFuncsDecl, ""), 'OMCpp<%fileNamePrefix%>Jacobian.h')
       let() = textFile(simulationJacobianCppFile(simCode, &extraFuncs, &extraFuncsDecl, "", stateDerVectorName, false), 'OMCpp<%fileNamePrefix%>Jacobian.cpp')
@@ -144,7 +144,7 @@ template generateAdditionalProtectedMemberDeclaration(SimCode simCode, Text& ext
  "Generates class declarations."
 ::=
   match simCode
-    case SIMCODE(modelInfo = MODELINFO(__), hpcomData=HPCOMDATA(__)) then
+    case SIMCODE(modelInfo = MODELINFO(__), hpcomData=HPCOMDATA(schedules=schedulesOpt)) then
       let &extraFuncsDecl += generateAdditionalFunctionHeaders(hpcomData.schedules)
       let &extraFuncsDecl += generateAdditionalHpcomVarHeaders(hpcomData.schedules)
       let type = getConfigString(HPCOM_CODE)
@@ -172,7 +172,19 @@ template generateAdditionalProtectedMemberDeclaration(SimCode simCode, Text& ext
             >>
         end match %>
       }
-
+      <%
+      match schedulesOpt
+        case SOME((odeSchedule as THREADSCHEDULE(__),_)) then
+          <<
+          #ifdef MEASURETIME_MODELFUNCTIONS
+          std::vector<MeasureTimeData> measureTimeThreadArrayOdeHpcom;
+          std::vector<MeasureTimeData> measureTimeThreadArrayDaeHpcom;
+          <%List.intRange(arrayLength(odeSchedule.threadTasks)) |> threadIdx => 'MeasureTimeValues* measuredSchedulerStartValues_<%intSub(threadIdx,1)%>;'; separator="\n"%>
+          <%List.intRange(arrayLength(odeSchedule.threadTasks)) |> threadIdx => 'MeasureTimeValues* measuredSchedulerEndValues_<%intSub(threadIdx,1)%>;'; separator="\n"%>
+          #endif //MEASURETIME_MODELFUNCTIONS
+          >>
+      end match
+      %>
       <% if boolNot(stringEq(getConfigString(PROFILING_LEVEL),"none")) then
       <<
       std::vector<MeasureTimeData> measureTimeArrayHpcom;
@@ -321,8 +333,8 @@ template generateAdditionalHpcomVarHeaders(Option<tuple<Schedule,Schedule>> sche
         else ""
       end match
     case SOME((odeSchedule as THREADSCHEDULE(__),daeSchedule as THREADSCHEDULE(__))) then
-      let odeLocks = odeSchedule.outgoingDepTasks |> task => createLockByDepTask(task, "_lockOde", type); separator="\n"
-      let daeLocks = daeSchedule.outgoingDepTasks |> task => createLockByDepTask(task, "_lockDae", type); separator="\n"
+      let odeLocks = createLockArrayByName(listLength(odeSchedule.outgoingDepTasks),"_lockOde",type)//odeSchedule.outgoingDepTasks |> task => createLockByDepTask(task, "_lockOde", type); separator="\n"
+      let daeLocks = createLockArrayByName(listLength(daeSchedule.outgoingDepTasks),"_lockDae",type)//daeSchedule.outgoingDepTasks |> task => createLockByDepTask(task, "_lockDae", type); separator="\n"
       match type
         case ("openmp") then
           let threadDecl = arrayList(odeSchedule.threadTasks) |> tt hasindex i0 fromindex 0 => generateThreadHeaderDecl(i0, type); separator="\n"
@@ -447,10 +459,12 @@ template generateAdditionalConstructorBodyStatements(Option<tuple<Schedule,Sched
         else ""
       end match
     case SOME((odeSchedule as THREADSCHEDULE(__),daeSchedule as THREADSCHEDULE(__))) then
-      let initlocksOde = odeSchedule.outgoingDepTasks |> task => initializeLockByDepTask(task, "_lockOde", type); separator="\n"
-      let assignLocksOde = odeSchedule.outgoingDepTasks |> task => assignLockByDepTask(task, "_lockOde", type); separator="\n"
-      let initlocksDae = daeSchedule.outgoingDepTasks |> task => initializeLockByDepTask(task, "_lockDae", type); separator="\n"
-      let assignLocksDae = daeSchedule.outgoingDepTasks |> task => assignLockByDepTask(task, "_lockDae", type); separator="\n"
+      let initlocksOde = initializeArrayLocks(listLength(odeSchedule.outgoingDepTasks),"_lockOde",type)//odeSchedule.outgoingDepTasks |> task => initializeLockByDepTask(task, "_lockOde", type); separator="\n"
+      let assignLocksOde = assignArrayLocks(listLength(odeSchedule.outgoingDepTasks),"_lockOde",type)//odeSchedule.outgoingDepTasks |> task => assignLockByDepTask(task, "_lockOde", type); separator="\n"
+      let initlocksDae = initializeArrayLocks(listLength(daeSchedule.outgoingDepTasks),"_lockDae",type)//daeSchedule.outgoingDepTasks |> task => initializeLockByDepTask(task, "_lockDae", type); separator="\n"
+      let assignLocksDae = assignArrayLocks(listLength(daeSchedule.outgoingDepTasks),"_lockDae",type)//daeSchedule.outgoingDepTasks |> task => assignLockByDepTask(task, "_lockDae", type); separator="\n"
+      let threadMeasureTimeBlocks = generateThreadMeasureTimeDeclaration(fullModelName, arrayLength(odeSchedule.threadTasks))
+
       match type
         case ("openmp") then
           let threadFuncs = arrayList(odeSchedule.threadTasks) |> tt hasindex i0 fromindex 0 => generateThread(i0, type, modelNamePrefixStr,"evaluateThreadFunc"); separator="\n"
@@ -459,6 +473,7 @@ template generateAdditionalConstructorBodyStatements(Option<tuple<Schedule,Sched
           <%threadFuncs%>
           <%initlocksOde%>
           <%initlocksDae%>
+          <%threadMeasureTimeBlocks%>
           >>
         case ("mpi") then
           <<
@@ -486,8 +501,8 @@ template generateAdditionalConstructorBodyStatements(Option<tuple<Schedule,Sched
           <%threadAssignLocks1%>
 
           <%threadFuncs%>
+          <%threadMeasureTimeBlocks%>
           >>
-      end match
     case SOME((odeSchedule as TASKDEPSCHEDULE(__), daeSchedule as TASKDEPSCHEDULE(__))) then
       match type
         case ("tbb") then
@@ -499,6 +514,109 @@ template generateAdditionalConstructorBodyStatements(Option<tuple<Schedule,Sched
     else ""
   end match
 end generateAdditionalConstructorBodyStatements;
+
+template generateThreadMeasureTimeDeclaration(String fullModelName, Integer numberOfThreads)
+::=
+  <<
+  #ifdef MEASURETIME_MODELFUNCTIONS
+  measureTimeThreadArrayOdeHpcom = std::vector<MeasureTimeData>(<%numberOfThreads%>);
+  measureTimeThreadArrayDaeHpcom = std::vector<MeasureTimeData>(<%numberOfThreads%>);
+  MeasureTime::addResultContentBlock("<%fullModelName%>","evaluateODE_threads",&measureTimeThreadArrayOdeHpcom);
+  MeasureTime::addResultContentBlock("<%fullModelName%>","evaluateDAE_threads",&measureTimeThreadArrayDaeHpcom);
+  <%List.intRange(numberOfThreads) |> threadIdx => 'measuredSchedulerStartValues_<%intSub(threadIdx,1)%> = MeasureTime::getZeroValues();'; separator="\n"%>
+  <%List.intRange(numberOfThreads) |> threadIdx => 'measuredSchedulerEndValues_<%intSub(threadIdx,1)%> = MeasureTime::getZeroValues();'; separator="\n"%>
+  <%List.intRange(numberOfThreads) |> threadIdx => 'measureTimeThreadArrayOdeHpcom[<%intSub(threadIdx,1)%>] = MeasureTimeData("evaluateODE_thread_<%threadIdx%>");'; separator="\n"%>
+  <%List.intRange(numberOfThreads) |> threadIdx => 'measureTimeThreadArrayDaeHpcom[<%intSub(threadIdx,1)%>] = MeasureTimeData("evaluateDAE_thread_<%threadIdx%>");'; separator="\n"%>
+  #endif //MEASURETIME_MODELFUNCTIONS
+  >>
+end generateThreadMeasureTimeDeclaration;
+
+template initializeArrayLocks(Integer numComms, String lockName, String iType)
+::=
+match(iType)
+  case "openmp" then
+  <<
+  for(unsigned i=0;i<<%numComms%>;++i)
+  	omp_init_lock(&<%lockName%>_[i]);
+  >>
+  case "pthreads" then
+  <<
+  for(unsigned i=0;i<<%numComms%>;++i)
+  	<%lockName%>_[i] = new alignedLock();
+  >>
+  case "pthreads_spin" then
+  <<
+  for(unsigned i=0;i<<%numComms%>;++i)
+  	<%lockName%>_[i] = new alignedSpinlock();
+  >>
+  else
+  <<
+  //Unsupported parallel instrumentation
+  >>
+end initializeArrayLocks;
+
+template assignArrayLocks(Integer numComms, String lockName, String iType)
+::=
+  match iType
+    case ("openmp") then
+      <<
+      for(unsigned i=0;i<<%numComms%>;++i)
+      	omp_set_lock(&<%lockName%>_[i]);
+      >>
+    case ("pthreads")
+    case ("pthreads_spin") then
+      <<
+      for(unsigned i=0;i<<%numComms%>;++i)
+      	<%lockName%>_[i]->lock();
+      >>
+
+  else
+  <<
+  //Unsupported parallel instrumentation
+  >>
+  end match
+end assignArrayLocks;
+
+template createLockArrayByName(Integer numComms, String lockName, String iType)
+::=
+match(iType)
+  case "openmp" then
+  <<
+  omp_lock_t <%lockName%>_[<%numComms%>];
+  >>
+  case "pthreads" then
+  <<
+  alignedLock* <%lockName%>_[<%numComms%>];
+  >>
+  case "pthreads_spin" then
+  <<
+  alignedSpinlock* <%lockName%>_[<%numComms%>];
+  >>
+  else
+  <<
+  //Unsupported parallel instrumentation
+  >>
+end createLockArrayByName;
+
+template destroyArrayLocks(Integer numComms, String lockName, String iType)
+::=
+match(iType)
+  case "openmp" then
+  <<
+  for(unsigned i=0;i<<%numComms%>;++i)
+  	omp_destroy_lock(&<%lockName%>_[i]);
+  >>
+  case "pthreads"
+  case "pthreads_spin" then
+  <<
+  for(unsigned i=0;i<<%numComms%>;++i)
+    delete <%lockName%>_[i];
+  >>
+  else
+  <<
+  //Unsupported parallel instrumentation
+  >>
+end destroyArrayLocks;
 
 template generateAdditionalDestructorBodyStatements(Option<tuple<Schedule,Schedule>> schedulesOpt)
 ::=
@@ -517,8 +635,8 @@ template generateAdditionalDestructorBodyStatements(Option<tuple<Schedule,Schedu
           >>
         else ""
     case SOME((odeSchedule as THREADSCHEDULE(__),daeSchedule as THREADSCHEDULE(__))) then
-      let destroyLocksOde = odeSchedule.outgoingDepTasks |> task => destroyLockByDepTask(task, "_lockOde", type); separator="\n"
-      let destroyLocksDae = daeSchedule.outgoingDepTasks |> task => destroyLockByDepTask(task, "_lockDae", type); separator="\n"
+      let destroyLocksOde = destroyArrayLocks(listLength(odeSchedule.outgoingDepTasks),"_lockOde",type)//odeSchedule.outgoingDepTasks |> task => destroyLockByDepTask(task, "_lockOde", type); separator="\n"
+      let destroyLocksDae = destroyArrayLocks(listLength(odeSchedule.outgoingDepTasks),"_lockDae",type)//daeSchedule.outgoingDepTasks |> task => destroyLockByDepTask(task, "_lockDae", type); separator="\n"
       match type
         case ("openmp") then
           <<
@@ -1073,9 +1191,15 @@ template function_HPCOM_Thread(list<SimEqSystem> allEquationsPlusWhen, array<lis
       #pragma omp parallel num_threads(<%arrayLength(threadTasksOde)%>)
       {
          int threadNum = omp_get_thread_num();
-
+         <%if boolNot(stringEq(getConfigString(PROFILING_LEVEL),"none")) then
+         <<
+         MeasureTimeValues *measuredSchedulerStartValues = MeasureTime::getZeroValues();
+         MeasureTimeValues *measuredSchedulerEndValues = MeasureTime::getZeroValues();
+         >>
+         %>
          if(_evaluateODE)
          {
+           <%generateMeasureTimeStartCode("measuredSchedulerStartValues", "evaluateODE_threads", "MEASURETIME_MODELFUNCTIONS")%>
            //Assign locks first
            <%threadAssignLocksOde%>
            #pragma omp barrier
@@ -1083,9 +1207,11 @@ template function_HPCOM_Thread(list<SimEqSystem> allEquationsPlusWhen, array<lis
            //Release locks after calculation
            #pragma omp barrier
            <%threadReleaseLocksOde%>
+           <%generateMeasureTimeEndCode("measuredSchedulerStartValues", "measuredSchedulerEndValues", "measureTimeThreadArrayOdeHpcom[threadNum]", "evaluateODE_threads", "MEASURETIME_MODELFUNCTIONS")%>
          }
          else
          {
+           <%generateMeasureTimeStartCode("measuredSchedulerStartValues", "evaluateDAE_threads", "MEASURETIME_MODELFUNCTIONS")%>
            //Assign locks first
            <%threadAssignLocksDae%>
            #pragma omp barrier
@@ -1093,7 +1219,14 @@ template function_HPCOM_Thread(list<SimEqSystem> allEquationsPlusWhen, array<lis
            //Release locks after calculation
            #pragma omp barrier
            <%threadReleaseLocksDae%>
+           <%generateMeasureTimeEndCode("measuredSchedulerStartValues", "measuredSchedulerEndValues", "measureTimeThreadArrayDaeHpcom[threadNum]", "evaluateDAE_threads", "MEASURETIME_MODELFUNCTIONS")%>
          }
+         <%if boolNot(stringEq(getConfigString(PROFILING_LEVEL),"none")) then
+         <<
+         delete measuredSchedulerStartValues;
+         delete measuredSchedulerEndValues;
+         >>
+         %>
       }
       >>
     case ("mpi") then
@@ -1113,11 +1246,15 @@ template function_HPCOM_Thread(list<SimEqSystem> allEquationsPlusWhen, array<lis
       <<
       if(_evaluateOde)
       {
+        <%generateMeasureTimeStartCode("measuredSchedulerStartValues", "evaluateODE_threads", "MEASURETIME_MODELFUNCTIONS")%>
         <%odeEqs%>
+        <%generateMeasureTimeEndCode("measuredSchedulerStartValues", "measuredSchedulerEndValues", "measureTimeThreadArrayOdeHpcom[threadNum]", "evaluateODE_threads", "MEASURETIME_MODELFUNCTIONS")%>
       }
       else
       {
+        <%generateMeasureTimeStartCode("measuredSchedulerStartValues", "evaluateDAE_threads", "MEASURETIME_MODELFUNCTIONS")%>
         <%daeEqs%>
+        <%generateMeasureTimeEndCode("measuredSchedulerStartValues", "measuredSchedulerEndValues", "measureTimeThreadArrayDaeHpcom[threadNum]", "evaluateDAE_threads", "MEASURETIME_MODELFUNCTIONS")%>
       }
       >>
   end match
@@ -1134,6 +1271,10 @@ template generateThreadFunc(list<SimEqSystem> allEquationsPlusWhen, list<Task> t
     <<
     void <%modelNamePrefixStr%>::evaluateThreadFunc<%iThreadIdx%>()
     {
+      #ifdef MEASURETIME_MODELFUNCTIONS
+      MeasureTimeValues *measuredSchedulerStartValues = measuredSchedulerStartValues_<%intSub(iThreadIdx,1)%>;
+      MeasureTimeValues *measuredSchedulerEndValues = measuredSchedulerEndValues_<%intSub(iThreadIdx,1)%>;
+      #endif //MEASURETIME_MODELFUNCTIONS
       <%&varDeclsLoc%>
       while(1)
       {
@@ -1156,7 +1297,12 @@ template generateThreadFunc(list<SimEqSystem> allEquationsPlusWhen, list<Task> t
   else
     let &mainThreadCode += &varDeclsLoc
     let &mainThreadCode +=
-      'if(_evaluateODE)
+      '
+       #ifdef MEASURETIME_MODELFUNCTIONS
+       MeasureTimeValues *measuredSchedulerStartValues = measuredSchedulerStartValues_0;
+       MeasureTimeValues *measuredSchedulerEndValues = measuredSchedulerEndValues_0;
+       #endif //MEASURETIME_MODELFUNCTIONS
+       if(_evaluateODE)
        {
          <%taskEqsOde%>
        }
@@ -1313,9 +1459,9 @@ end generateThread;
 
 template getLockNameByDepTask(Task depTask)
 ::=
-  match(depTask)
-    case(DEPTASK(sourceTask=CALCTASK(index=sourceIdx), targetTask=CALCTASK(index=targetIdx))) then
-      '<%sourceIdx%>_<%targetIdx%>'
+  match depTask
+    case(task as DEPTASK(__)) then
+      '[<%task.id%>]'
     else
       'invalidLockTask'
   end match
@@ -1460,10 +1606,7 @@ template assignLockByLockName(String lockName, String lockPrefix, String iType)
       <<
       omp_set_lock(&<%lockPrefix%>_<%lockName%>);
       >>
-    case ("pthreads") then
-      <<
-      <%lockPrefix%>_<%lockName%>->lock();
-      >>
+    case ("pthreads")
     case ("pthreads_spin") then
       <<
       <%lockPrefix%>_<%lockName%>->lock();

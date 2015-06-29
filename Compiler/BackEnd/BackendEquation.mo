@@ -1186,7 +1186,7 @@ algorithm
   eqns_1 := List.fold(eqnlst, addEquation, eqns);
 end addEquations;
 
-public function mergeEquationArray "author: vitalij
+public function mergeEquationArray "
   This function returns an EquationArray containing all the equations from both
   inputs."
   input BackendDAE.EquationArray inEqns1;
@@ -1266,16 +1266,11 @@ public function equationAddDAE "author: Frenkel TUD 2011-05"
   input BackendDAE.EqSystem inEqSystem;
   output BackendDAE.EqSystem outEqSystem;
 protected
-  BackendDAE.Variables orderedVars;
-  BackendDAE.EquationArray orderedEqs, newOrderedEqs;
-  Option<BackendDAE.IncidenceMatrix> m;
-  Option<BackendDAE.IncidenceMatrixT> mT;
-  BackendDAE.StateSets stateSets;
-  BackendDAE.BaseClockPartitionKind partitionKind;
+  BackendDAE.EquationArray eqs;
 algorithm
-  BackendDAE.EQSYSTEM(orderedVars, orderedEqs, m, mT, _, stateSets, partitionKind) := inEqSystem;
-  newOrderedEqs := addEquation(inEquation, orderedEqs);
-  outEqSystem := BackendDAE.EQSYSTEM(orderedVars, newOrderedEqs, m, mT, BackendDAE.NO_MATCHING(), stateSets, partitionKind);
+  BackendDAE.EQSYSTEM(orderedEqs=eqs) := inEqSystem;
+  outEqSystem := BackendDAEUtil.setEqSystEqs(inEqSystem, addEquation(inEquation, eqs));
+  outEqSystem := BackendDAEUtil.setEqSystMatching(outEqSystem, BackendDAE.NO_MATCHING());
 end equationAddDAE;
 
 public function equationsAddDAE "author: Frenkel TUD 2011-05"
@@ -1283,16 +1278,11 @@ public function equationsAddDAE "author: Frenkel TUD 2011-05"
   input BackendDAE.EqSystem inEqSystem;
   output BackendDAE.EqSystem outEqSystem;
 protected
-  BackendDAE.Variables orderedVars;
-  BackendDAE.EquationArray orderedEqs, newOrderedEqs;
-  Option<BackendDAE.IncidenceMatrix> m;
-  Option<BackendDAE.IncidenceMatrixT> mT;
-  BackendDAE.StateSets stateSets;
-  BackendDAE.BaseClockPartitionKind partitionKind;
+  BackendDAE.EquationArray eqs;
 algorithm
-  BackendDAE.EQSYSTEM(orderedVars, orderedEqs, m, mT, _, stateSets, partitionKind) := inEqSystem;
-  newOrderedEqs := List.fold(inEquations, addEquation, orderedEqs);
-  outEqSystem := BackendDAE.EQSYSTEM(orderedVars, newOrderedEqs, m, mT, BackendDAE.NO_MATCHING(), stateSets, partitionKind);
+  BackendDAE.EQSYSTEM(orderedEqs=eqs) := inEqSystem;
+  outEqSystem := BackendDAEUtil.setEqSystEqs(inEqSystem, List.fold(inEquations, addEquation, eqs));
+  outEqSystem := BackendDAEUtil.setEqSystMatching(outEqSystem, BackendDAE.NO_MATCHING());
 end equationsAddDAE;
 
 public function requationsAddDAE "author: Frenkel TUD 2012-10
@@ -1304,57 +1294,27 @@ public function requationsAddDAE "author: Frenkel TUD 2012-10
 algorithm
   outShared := match (inEquations, inShared)
     local
-      BackendDAE.Variables knvars, exobj, aliasVars;
-      BackendDAE.EquationArray remeqns, inieqns;
-      list<DAE.Constraint> constrs;
-      list<DAE.ClassAttributes> clsAttrs;
-      FCore.Cache cache;
-      FCore.Graph env;
-      DAE.FunctionTree funcs;
-      BackendDAE.EventInfo einfo;
-      BackendDAE.ExternalObjectClasses eoc;
-      BackendDAE.SymbolicJacobians symjacs;
-      BackendDAE.BackendDAEType btp;
-      BackendDAE.ExtraInfo ei;
-
+      BackendDAE.EquationArray eqs;
     case ({}, _)
-    then inShared;
-
-    case (_, BackendDAE.SHARED(knvars, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, env, funcs, einfo, eoc, btp, symjacs, ei)) equation
-      remeqns = List.fold(inEquations, addEquation, remeqns);
-    then BackendDAE.SHARED(knvars, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, env, funcs, einfo, eoc, btp, symjacs, ei);
+      then inShared;
+    case (_, BackendDAE.SHARED(removedEqs=eqs)) equation
+      then BackendDAEUtil.setSharedRemovedEqns(inShared, List.fold(inEquations, addEquation, eqs));
   end match;
 end requationsAddDAE;
 
-public function removeRemovedEqs
-"
-remove removedEqs
-"
+public function removeRemovedEqs "remove removedEqs"
   input BackendDAE.Shared inShared;
   output BackendDAE.Shared outShared;
 protected
-      BackendDAE.Variables knvars, exobj, aliasVars;
-      BackendDAE.EquationArray remeqns, inieqns;
-      list<DAE.Constraint> constrs;
-      list<DAE.ClassAttributes> clsAttrs;
-      FCore.Cache cache;
-      FCore.Graph env;
-      DAE.FunctionTree funcs;
-      BackendDAE.EventInfo einfo;
-      BackendDAE.ExternalObjectClasses eoc;
-      BackendDAE.SymbolicJacobians symjacs;
-      BackendDAE.BackendDAEType btp;
-      BackendDAE.ExtraInfo ei;
-      Integer n;
+  BackendDAE.EquationArray eqs;
+  Integer n;
 algorithm
-  (BackendDAE.SHARED(knvars, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, env, funcs, einfo, eoc, btp, symjacs, ei)) := inShared;
-  BackendDAE.EQUATION_ARRAY(numberOfElement=n) := remeqns;
+  BackendDAE.SHARED(removedEqs=eqs) := inShared;
+  BackendDAE.EQUATION_ARRAY(numberOfElement=n) := eqs;
   for ind in 1:n loop
-    remeqns := equationRemove(ind, remeqns);
+    eqs := equationRemove(ind, eqs);
   end for;
-
-  outShared := BackendDAE.SHARED(knvars, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, env, funcs, einfo, eoc, btp, symjacs, ei);
-
+  outShared := BackendDAEUtil.setSharedRemovedEqns(inShared, eqs);
 end removeRemovedEqs;
 
 public function setAtIndex "author: lochel
@@ -1834,6 +1794,10 @@ algorithm
     case BackendDAE.WHEN_EQUATION(source=source) then source;
     case BackendDAE.ALGORITHM(source=source) then source;
     case BackendDAE.COMPLEX_EQUATION(source=source) then source;
+    case BackendDAE.IF_EQUATION(source=source) then source;
+    else
+      equation Error.addInternalError("BackendEquation.equationSource failed!", sourceInfo());
+      then fail();
   end match;
 end equationSource;
 
@@ -2017,20 +1981,8 @@ public function generateEQUATION "author: Frenkel TUD 2010-05"
   input BackendDAE.EquationKind inEqKind;
   output BackendDAE.Equation outEqn;
 algorithm
-  outEqn := BackendDAE.EQUATION(iLhs, iRhs, Source, BackendDAE.EQUATION_ATTRIBUTES(false, inEqKind, 0, BackendDAE.NO_LOOP()));
+  outEqn := BackendDAE.EQUATION(iLhs, iRhs, Source, BackendDAE.EQUATION_ATTRIBUTES(false, inEqKind, BackendDAE.NO_LOOP()));
 end generateEQUATION;
-
-public function setSubPartition "author: lochel"
-  input BackendDAE.Equation inEqn;
-  input Integer inSubClockPartitionIndex;
-  output BackendDAE.Equation outEqn;
-protected
-  BackendDAE.EquationAttributes attr;
-algorithm
-  attr := getEquationAttributes(inEqn);
-  attr := setSubClockPartitionIndex(attr, inSubClockPartitionIndex);
-  outEqn := setEquationAttributes(inEqn, attr);
-end setSubPartition;
 
 public function getEquationAttributes
   input BackendDAE.Equation inEqn;
@@ -2055,19 +2007,6 @@ algorithm
     then fail();
   end match;
 end getEquationAttributes;
-
-public function setSubClockPartitionIndex
-  input BackendDAE.EquationAttributes inAttr;
-  input Integer inSubClockPartitionIndex;
-  output BackendDAE.EquationAttributes outAttr;
-protected
-  Boolean differentiated;
-  BackendDAE.EquationKind kind;
-  BackendDAE.LoopInfo loopInfo;
-algorithm
-  BackendDAE.EQUATION_ATTRIBUTES(differentiated=differentiated, kind=kind, loopInfo=loopInfo) := inAttr;
-  outAttr := BackendDAE.EQUATION_ATTRIBUTES(differentiated, kind, inSubClockPartitionIndex, loopInfo);
-end setSubClockPartitionIndex;
 
 public function setEquationAttributes
   input BackendDAE.Equation inEqn;
@@ -2133,7 +2072,7 @@ algorithm
     DAE.Exp rhs;
 
     case (_, SOME(rhs), _, _)
-    then {BackendDAE.SOLVED_EQUATION(inLhs, rhs, inSource, BackendDAE.EQUATION_ATTRIBUTES(false, inEqKind, 0, BackendDAE.NO_LOOP()))};
+    then {BackendDAE.SOLVED_EQUATION(inLhs, rhs, inSource, BackendDAE.EQUATION_ATTRIBUTES(false, inEqKind, BackendDAE.NO_LOOP()))};
 
     else {};
   end match;
@@ -2926,11 +2865,10 @@ protected function markDifferentiated2
   output BackendDAE.EquationAttributes outAttr;
 protected
   BackendDAE.EquationKind kind;
-  Integer subPartitionIndex;
   BackendDAE.LoopInfo loopInfo;
 algorithm
-  BackendDAE.EQUATION_ATTRIBUTES(kind=kind, subPartitionIndex=subPartitionIndex, loopInfo=loopInfo) := inAttr;
-  outAttr := BackendDAE.EQUATION_ATTRIBUTES(true, kind, subPartitionIndex, loopInfo);
+  BackendDAE.EQUATION_ATTRIBUTES(kind=kind, loopInfo=loopInfo) := inAttr;
+  outAttr := BackendDAE.EQUATION_ATTRIBUTES(true, kind, loopInfo);
 end markDifferentiated2;
 
 public function isDifferentiated

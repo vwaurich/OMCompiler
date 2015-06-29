@@ -98,7 +98,6 @@ algorithm
       list<list<SimCode.SimEqSystem>> odeEquations;         // --> functionODE
       list<list<SimCode.SimEqSystem>> algebraicEquations;   // --> functionAlgebraics
       list<SimCode.SimEqSystem> residuals;                  // --> initial_residual
-      Boolean useSymbolicInitialization;                    // true if a system to solve the initial problem symbolically is generated, otherwise false
       Boolean useHomotopy;                                  // true if homotopy(...) is used during initialization
       list<SimCode.SimEqSystem> initialEquations;           // --> initial_equations
       list<SimCode.SimEqSystem> removedInitialEquations;    // --> functionRemovedInitialEquations
@@ -122,6 +121,8 @@ algorithm
       SimCode.DelayedExpression delayedExps;
       BackendDAE.Variables knownVars;
       list<BackendDAE.Var> varlst;
+      list<BackendDAE.BaseClockPartitionKind> partitionsKind;
+      list<DAE.ClockKind> baseClocks;
 
       list<SimCode.JacobianMatrix> LinearMatrices, SymbolicJacs, SymbolicJacsTemp, SymbolicJacsStateSelect;
       SimCode.HashTableCrefToSimVar crefToSimVarHT;
@@ -193,10 +194,15 @@ algorithm
       //Setup
       //-----
       System.realtimeTick(ClockIndexes.RT_CLOCK_EXECSTAT_HPCOM_MODULES);
-      (simCode,(lastEqMappingIdx,equationSccMapping)) = SimCodeUtil.createSimCode(inBackendDAE, inClassName, filenamePrefix, inString11, functions, externalFunctionIncludes, includeDirs, libs,libPaths, simSettingsOpt, recordDecls, literals, args);
-      SimCode.SIMCODE(modelInfo, simCodeLiterals, simCodeRecordDecls, simCodeExternalFunctionIncludes, allEquations, odeEquations, algebraicEquations, useSymbolicInitialization, useHomotopy, initialEquations, removedInitialEquations, startValueEquations, nominalValueEquations, minValueEquations, maxValueEquations,
-                 parameterEquations, removedEquations, algorithmAndEquationAsserts, zeroCrossingsEquations, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
-                 discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, _, varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT, backendMapping) = simCode;
+      (simCode,(lastEqMappingIdx,equationSccMapping)) =
+          SimCodeUtil.createSimCode( inBackendDAE, inClassName, filenamePrefix, inString11, functions,
+                                     externalFunctionIncludes, includeDirs, libs,libPaths, simSettingsOpt, recordDecls, literals, args );
+      SimCode.SIMCODE( modelInfo, simCodeLiterals, simCodeRecordDecls, simCodeExternalFunctionIncludes, allEquations, odeEquations, algebraicEquations,
+                       partitionsKind, baseClocks, useHomotopy, initialEquations, removedInitialEquations, startValueEquations,
+                       nominalValueEquations, minValueEquations, maxValueEquations, parameterEquations, removedEquations, algorithmAndEquationAsserts,
+                       zeroCrossingsEquations, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
+                       discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, _,
+                       varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT, backendMapping ) = simCode;
 
       //print("Number of literals pre: " + intString(listLength(simCodeLiterals)) + "\n");
 
@@ -337,9 +343,12 @@ algorithm
       (scheduleDae,simCode,taskGraphDaeScheduled,taskGraphDataDaeScheduled,sccSimEqMapping) = createSchedule(taskGraphDaeSimplified,taskGraphDataDaeSimplified,daeSccSimEqMapping,simVarMapping,filenamePrefix,numProc,simCode,scheduledTasksDae,"DAE system");
       (scheduleOde,simCode,taskGraphOdeScheduled,taskGraphDataOdeScheduled,sccSimEqMapping) = createSchedule(taskGraphOdeSimplified,taskGraphDataOdeSimplified,sccSimEqMapping,simVarMapping,filenamePrefix,numProc,simCode,scheduledTasksOde,"ODE system");
 
-      SimCode.SIMCODE(modelInfo, simCodeLiterals, simCodeRecordDecls, simCodeExternalFunctionIncludes, allEquations, odeEquations, algebraicEquations, useSymbolicInitialization, useHomotopy, initialEquations, removedInitialEquations, startValueEquations, nominalValueEquations, minValueEquations, maxValueEquations,
-          parameterEquations, removedEquations, algorithmAndEquationAsserts, zeroCrossingsEquations, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
-          discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, _, varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT, backendMapping, modelStruct) = simCode;
+      SimCode.SIMCODE( modelInfo, simCodeLiterals, simCodeRecordDecls, simCodeExternalFunctionIncludes, allEquations, odeEquations, algebraicEquations,
+                       partitionsKind, baseClocks, useHomotopy, initialEquations, removedInitialEquations, startValueEquations,
+                       nominalValueEquations, minValueEquations, maxValueEquations, parameterEquations, removedEquations, algorithmAndEquationAsserts,
+                       zeroCrossingsEquations, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
+                       discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, _, varToArrayIndexMapping,
+                       varToIndexMapping, crefToSimVarHT, backendMapping, modelStruct ) = simCode;
 
       //(schedule,numProc) = repeatScheduleWithOtherNumProc(taskGraphSimplified,taskGraphDataSimplified,sccSimEqMapping,filenamePrefix,cpCostsWoC,schedule,numProc,numFixed);
       numProc = Flags.getConfigInt(Flags.NUM_PROC);
@@ -373,9 +382,12 @@ algorithm
       SimCodeUtil.execStat("hpcom create memory map");
 
       hpcomData = HpcOmSimCode.HPCOMDATA(SOME((scheduleOde, scheduleDae)), optTmpMemoryMap);
-      simCode = SimCode.SIMCODE(modelInfo, simCodeLiterals, simCodeRecordDecls, simCodeExternalFunctionIncludes, allEquations, odeEquations, algebraicEquations, useSymbolicInitialization, useHomotopy, initialEquations, removedInitialEquations, startValueEquations, nominalValueEquations, minValueEquations, maxValueEquations,
-                 parameterEquations, removedEquations, algorithmAndEquationAsserts, zeroCrossingsEquations, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
-                 discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, hpcomData, varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT, backendMapping, modelStruct);
+      simCode = SimCode.SIMCODE( modelInfo, simCodeLiterals, simCodeRecordDecls, simCodeExternalFunctionIncludes, allEquations, odeEquations, algebraicEquations,
+                                 partitionsKind, baseClocks, useHomotopy, initialEquations, removedInitialEquations, startValueEquations,
+                                 nominalValueEquations, minValueEquations, maxValueEquations, parameterEquations, removedEquations, algorithmAndEquationAsserts,
+                                 zeroCrossingsEquations, jacobianEquations, stateSets, constraints, classAttributes, zeroCrossings, relations, timeEvents, whenClauses,
+                                 discreteModelVars, extObjInfo, makefileParams, delayedExps, jacobianMatrixes, simulationSettingsOpt, fileNamePrefix, hpcomData,
+                                 varToArrayIndexMapping, varToIndexMapping, crefToSimVarHT, backendMapping, modelStruct );
 
       //print("Number of literals post: " + intString(listLength(simCodeLiterals)) + "\n");
 
@@ -994,12 +1006,12 @@ algorithm
   oMapping := matchcontinue(iEquation, iMapping)
     case(_,_)
       equation
-        simEqIdx = getIndexBySimCodeEq(iEquation);
+        (simEqIdx,_) = getIndexBySimCodeEq(iEquation);
         tmpMapping = arrayUpdate(iMapping, simEqIdx, SOME(iEquation));
       then tmpMapping;
     else
       equation
-        simEqIdx = getIndexBySimCodeEq(iEquation);
+        (simEqIdx,_) = getIndexBySimCodeEq(iEquation);
         //print("getSimEqIdxSimEqMapping1: Can't access idx " + intString(simEqIdx) + "\n");
       then iMapping;
   end matchcontinue;
@@ -1146,15 +1158,15 @@ public function getSimCodeEqByIndex "function getSimCodeEqByIndex
 protected
   list<SimCode.SimEqSystem> rest;
   SimCode.SimEqSystem head;
-  Integer headIdx;
+  Integer headIdx,headIdx2;
 
 algorithm
   oEq := matchcontinue(iEqs,iIdx)
     case(head::rest,_)
       equation
-        headIdx = getIndexBySimCodeEq(head);
+        (headIdx,headIdx2) = getIndexBySimCodeEq(head);
         //print("getSimCodeEqByIndex listLength: " + intString(listLength(iEqs)) + " head idx: " + intString(headIdx) + "\n");
-        true = intEq(headIdx,iIdx);
+        true = intEq(headIdx,iIdx) or intEq(headIdx2,iIdx);
       then head;
     case(head::rest,_) then getSimCodeEqByIndex(rest,iIdx);
     else
@@ -1170,21 +1182,26 @@ protected function getIndexBySimCodeEq "function getIndexBySimCodeEq
   Just a small helper function to get the index of a SimEqSystem."
   input SimCode.SimEqSystem iEq;
   output Integer oIdx;
+  output Integer oIdx2;
 
 protected
-  Integer index;
+  Integer index,index2;
 
 algorithm
-  oIdx := match(iEq)
-    case(SimCode.SES_RESIDUAL(index=index)) then index;
-    case(SimCode.SES_SIMPLE_ASSIGN(index=index)) then index;
-    case(SimCode.SES_ARRAY_CALL_ASSIGN(index=index)) then index;
-    case(SimCode.SES_IFEQUATION(index=index)) then index;
-    case(SimCode.SES_ALGORITHM(index=index)) then index;
-    case(SimCode.SES_LINEAR(SimCode.LINEARSYSTEM(index=index))) then index;
-    case(SimCode.SES_NONLINEAR(SimCode.NONLINEARSYSTEM(index=index))) then index;
-    case(SimCode.SES_MIXED(index=index)) then index;
-    case(SimCode.SES_WHEN(index=index)) then index;
+  (oIdx,oIdx2) := match(iEq)
+    case(SimCode.SES_RESIDUAL(index=index)) then (index,0);
+    case(SimCode.SES_SIMPLE_ASSIGN(index=index)) then (index,0);
+    case(SimCode.SES_ARRAY_CALL_ASSIGN(index=index)) then (index,0);
+    case(SimCode.SES_IFEQUATION(index=index)) then (index,0);
+    case(SimCode.SES_ALGORITHM(index=index)) then (index,0);
+    // no dynamic tearing
+    case(SimCode.SES_LINEAR(SimCode.LINEARSYSTEM(index=index), NONE())) then (index,0);
+    case(SimCode.SES_NONLINEAR(SimCode.NONLINEARSYSTEM(index=index), NONE())) then (index,0);
+    // dynamic tearing
+    case(SimCode.SES_LINEAR(SimCode.LINEARSYSTEM(index=index), SOME(SimCode.LINEARSYSTEM(index=index2)))) then (index,index2);
+    case(SimCode.SES_NONLINEAR(SimCode.NONLINEARSYSTEM(index=index), SOME(SimCode.NONLINEARSYSTEM(index=index2)))) then (index,index2);
+    case(SimCode.SES_MIXED(index=index)) then (index,0);
+    case(SimCode.SES_WHEN(index=index)) then (index,0);
     else fail();
   end match;
 end getIndexBySimCodeEq;

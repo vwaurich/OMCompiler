@@ -3,7 +3,7 @@
  *  Module for array operations and math functions
  *  @{
  */
-     
+
 /**
 * forward declaration
 */
@@ -1344,7 +1344,7 @@ class StatRefArrayDim1 : public StatRefArray<T, size>
    */
   virtual StatRefArrayDim1<T, size>& operator=(BaseArray<T>& b)
   {
-    StatRefArrayDim1<T, size>::operator=(b);
+    StatRefArray<T, size>::operator=(b);
     return *this;
   }
   /**
@@ -2008,7 +2008,7 @@ public:
     }
     return *this;
   }
- 
+
   void setDims(size_t size1, size_t size2, size_t size3)
   {
     _multi_array.resize(boost::extents[size1][size2][size3]);

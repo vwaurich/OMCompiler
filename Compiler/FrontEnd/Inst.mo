@@ -2269,7 +2269,8 @@ algorithm
 
         //Instantiate equations (see function "instEquation")
         (cache,env5,ih,dae2,csets2,ci_state3,graph) =
-          instList(cache, env5, ih, pre, csets1, ci_state2, InstSection.instEquation, eqs_1, impl, InstTypes.alwaysUnroll, graph) ;
+          instList(cache, env5, ih, pre, csets1, ci_state2, InstSection.instEquation, eqs_1, impl, InstTypes.alwaysUnroll, graph);
+        DAEUtil.verifyEquationsDAE(dae2);
 
         //Instantiate inital equations (see function "instInitialEquation")
         (cache,env5,ih,dae3,csets3,ci_state4,graph) =
@@ -3492,7 +3493,9 @@ algorithm
         // merge modifers from the component to the modifers from the constrained by
         m = SCode.mergeModifiers(m, SCodeUtil.getConstrainedByModifiers(prefixes));
 
-        m = InstUtil.traverseModAddFinal(m, final_prefix);
+        if SCode.finalBool(final_prefix) then
+          m = InstUtil.traverseModAddFinal(m);
+        end if;
         comp = SCode.COMPONENT(name, prefixes, attr, ts, m, comment, cond, info);
 
         // Fails if multiple decls not identical
@@ -3668,8 +3671,10 @@ algorithm
         true = Config.acceptMetaModelicaGrammar();
 
         // see if we have a modification on the inner component
-        m = InstUtil.traverseModAddFinal(m, final_prefix);
-        comp = SCode.COMPONENT(name, prefixes, attr, ts, m, comment, cond, info);
+        if SCode.finalBool(final_prefix) then
+          m = InstUtil.traverseModAddFinal(m);
+          comp = SCode.COMPONENT(name, prefixes, attr, ts, m, comment, cond, info);
+        end if;
 
         // Fails if multiple decls not identical
         already_declared = InstUtil.checkMultiplyDeclared(cache, env, mods, pre,

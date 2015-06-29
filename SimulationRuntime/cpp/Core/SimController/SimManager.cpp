@@ -1,5 +1,5 @@
 /** @addtogroup coreSimcontroller
- *  
+ *
  *  @{
  */
 #include <Core/ModelicaDefine.h>
@@ -52,6 +52,14 @@ SimManager::SimManager(boost::shared_ptr<IMixedSystem> system, Configuration* co
 
         measureTimeFunctionsArray[0] = MeasureTimeData("initializeSimulation");
         measureTimeFunctionsArray[1] = MeasureTimeData("runSimulation");
+    }
+    else
+    {
+        measureTimeFunctionsArray = std::vector<MeasureTimeData>();
+        initSimStartValues = NULL;
+        initSimEndValues = NULL;
+        runSimStartValues = NULL;
+        runSimEndValues = NULL;
     }
     #endif
 }

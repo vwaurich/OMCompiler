@@ -119,7 +119,7 @@ algorithm
       //  BackendDump.printEqSystem(inSystem);
       //  BackendDump.dumpMatching(inAssignments1);
       //  BackendDump.dumpMatching(inAssignments2);
-      //  syst = BackendDAEUtil.setEqSystemMatching(inSystem, BackendDAE.MATCHING(inAssignments1, inAssignments2, {}));
+      //  syst = BackendDAEUtil.setEqSystMatching(inSystem, BackendDAE.MATCHING(inAssignments1, inAssignments2, {}));
       //  dumpSystemGraphML(syst, inShared, NONE(), "ConstrainRevoluteJoint" + intString(listLength(List.flatten(inEqns))) + ".graphml");
       // check by count vars of equations, if len(inEqns) > len(vars) stop because of structural singular system
       ErrorExt.setCheckpoint("Pantelides");
@@ -411,7 +411,7 @@ algorithm
       if Flags.isSet(Flags.BLT_DUMP) then
         print(BackendDump.dumpMarkedEqns(inSystem, eqns1));
       end if;
-      syst = BackendDAEUtil.setEqSystemMatching(inSystem, BackendDAE.MATCHING(inAssignments1, inAssignments2, {}));
+      syst = BackendDAEUtil.setEqSystMatching(inSystem, BackendDAE.MATCHING(inAssignments1, inAssignments2, {}));
       if Flags.isSet(Flags.BLT_DUMP) then
         BackendDump.printBackendDAE(BackendDAE.DAE({syst}, inShared));
       end if;
@@ -434,7 +434,7 @@ algorithm
       if Flags.isSet(Flags.BLT_DUMP) then
         BackendDump.printVarList(varlst);
       end if;
-      syst = BackendDAEUtil.setEqSystemMatching(inSystem, BackendDAE.MATCHING(inAssignments1, inAssignments2, {}));
+      syst = BackendDAEUtil.setEqSystMatching(inSystem, BackendDAE.MATCHING(inAssignments1, inAssignments2, {}));
       if Flags.isSet(Flags.BLT_DUMP) then
         BackendDump.printBackendDAE(BackendDAE.DAE({syst}, inShared));
       end if;
@@ -1021,7 +1021,7 @@ algorithm
         fcall(Flags.BLT_DUMP, print, "state vars of undiffed Eqns\n");
         fcall(Flags.BLT_DUMP, BackendDump.printVarList, varlst);
 
-        syst = BackendDAEUtil.setEqSystemMatching(inSystem,BackendDAE.MATCHING(inAss1,inAss2,{}));
+        syst = BackendDAEUtil.setEqSystMatching(inSystem,BackendDAE.MATCHING(inAss1,inAss2,{}));
         dumpSystemGraphML(syst,inShared,NONE(),"test.graphml");
       then
         fail();
@@ -1084,7 +1084,7 @@ algorithm
           BackendDump.printVarList(varlst);
         end if;
 
-        //  syst = BackendDAEUtil.setEqSystemMatching(inSystem,BackendDAE.MATCHING(inAss1,inAss2,{}));
+        //  syst = BackendDAEUtil.setEqSystMatching(inSystem,BackendDAE.MATCHING(inAss1,inAss2,{}));
         //  dumpSystemGraphML(syst,inShared,NONE(),"IndexReductionFailed.graphml");
       then
         fail();
@@ -1717,7 +1717,7 @@ algorithm
         Matching.matchingExternalsetIncidenceMatrix(nv, ne, m);
         BackendDAEEXT.matching(nv, ne, 5, -1, 0.0, 0);
         BackendDAEEXT.getAssignment(ass2, ass1);
-        syst = BackendDAEUtil.setEqSystemMatching(syst,BackendDAE.MATCHING(ass1,ass2,{}));
+        syst = BackendDAEUtil.setEqSystMatching(syst,BackendDAE.MATCHING(ass1,ass2,{}));
       then
         (syst,inShared,ht,iSetIndex);
     // select states
@@ -1844,7 +1844,7 @@ algorithm
         Matching.matchingExternalsetIncidenceMatrix(nv1, ne1, m);
         BackendDAEEXT.matching(nv1, ne1, 5, -1, 0.0, 0);
         BackendDAEEXT.getAssignment(ass2, ass1);
-        syst = BackendDAEUtil.setEqSystemMatching(syst,BackendDAE.MATCHING(ass1,ass2,{}));
+        syst = BackendDAEUtil.setEqSystMatching(syst,BackendDAE.MATCHING(ass1,ass2,{}));
         //  BackendDump.dumpEqSystem(syst,"Next Level");
         // next level
         (syst,shared,ht,setIndex) = selectStatesWork(level+1,lov,syst,inShared,so,orgEqnsLst,mapEqnIncRow,mapIncRowEqn,ht,setIndex);
@@ -2095,7 +2095,7 @@ algorithm
           BackendDump.debuglst(unassigned,intString," ","\n");
         end if;
         // splitt it into sets
-        syst = BackendDAEUtil.setEqSystemMatching(syst, BackendDAE.MATCHING(vec1,vec2,{}));
+        syst = BackendDAEUtil.setEqSystMatching(syst, BackendDAE.MATCHING(vec1,vec2,{}));
         //  dumpSystemGraphML(syst,inShared,NONE(),"StateSelection" + intString(arrayLength(m)) + ".graphml");
         (syst,m,mT,mapEqnIncRow,mapIncRowEqn) = BackendDAEUtil.getIncidenceMatrixScalar(syst,BackendDAE.ABSOLUTE(), SOME(funcs));
         // TODO: partition the system
@@ -3848,17 +3848,27 @@ algorithm
       BackendDAE.BackendDAEType btp;
       list<BackendDAE.TimeEvent> timeEvents;
       BackendDAE.ExtraInfo ei;
+      array<DAE.ClockKind> clocks;
 
-    case (BackendDAE.SHARED(knvars,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcTree,BackendDAE.EVENT_INFO(timeEvents,whenClauseLst,zeroCrossingLst,sampleLst,relationsLst,numberOfMathEventFunctions),eoc,btp,symjacs,ei),_)
+    case (BackendDAE.SHARED( knvars, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, graph, funcTree,
+                             BackendDAE.EVENT_INFO( timeEvents, whenClauseLst, zeroCrossingLst, sampleLst,
+                                                    relationsLst, numberOfMathEventFunctions, clocks),
+                             eoc, btp, symjacs, ei), _)
       equation
         // replace dummy_derivatives in knvars,aliases,ineqns,remeqns
-        (aliasVars,_) = BackendVariable.traverseBackendDAEVarsWithUpdate(aliasVars,replaceDummyDerivativesVar,ht);
-        (knvars1,_) = BackendVariable.traverseBackendDAEVarsWithUpdate(knvars,replaceDummyDerivativesVar,ht);
-        _ = BackendDAEUtil.traverseBackendDAEExpsEqnsWithUpdate(inieqns,Expression.traverseSubexpressionsHelper,(replaceDummyDerivativesExp,ht));
-        _ = BackendDAEUtil.traverseBackendDAEExpsEqnsWithUpdate(remeqns,Expression.traverseSubexpressionsHelper,(replaceDummyDerivativesExp,ht));
-        (whenClauseLst1,_) = BackendDAETransform.traverseBackendDAEExpsWhenClauseLst(whenClauseLst,Expression.traverseSubexpressionsHelper,(replaceDummyDerivativesExp,ht));
+        (aliasVars,_) = BackendVariable.traverseBackendDAEVarsWithUpdate(aliasVars, replaceDummyDerivativesVar, ht);
+        (knvars1,_) = BackendVariable.traverseBackendDAEVarsWithUpdate(knvars, replaceDummyDerivativesVar, ht);
+        _ = BackendDAEUtil.traverseBackendDAEExpsEqnsWithUpdate( inieqns, Expression.traverseSubexpressionsHelper,
+                                                                 (replaceDummyDerivativesExp,ht) );
+        _ = BackendDAEUtil.traverseBackendDAEExpsEqnsWithUpdate( remeqns, Expression.traverseSubexpressionsHelper,
+                                                                 (replaceDummyDerivativesExp,ht) );
+        (whenClauseLst1,_) = BackendDAETransform.traverseBackendDAEExpsWhenClauseLst( whenClauseLst,Expression.traverseSubexpressionsHelper,
+                                                                                      (replaceDummyDerivativesExp,ht) );
       then
-        BackendDAE.SHARED(knvars1,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcTree,BackendDAE.EVENT_INFO(timeEvents,whenClauseLst1,zeroCrossingLst,sampleLst,relationsLst,numberOfMathEventFunctions),eoc,btp,symjacs,ei);
+        BackendDAE.SHARED( knvars1, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, graph, funcTree,
+                           BackendDAE.EVENT_INFO( timeEvents, whenClauseLst1, zeroCrossingLst, sampleLst, relationsLst,
+                                                  numberOfMathEventFunctions, clocks ),
+                           eoc, btp, symjacs, ei );
 
   end match;
 end replaceDummyDerivativesShared;
@@ -3914,11 +3924,11 @@ protected
   list<Integer> unassigned,assigned;
 algorithm
   vars := BackendVariable.listVar1(inVarLst);
-  (eqnslst,_) := InlineArrayEquations.getScalarArrayEqns(inEqnsLst);
+  (eqnslst, _) := InlineArrayEquations.getScalarArrayEqns(inEqnsLst);
   eqns := BackendEquation.listEquation(eqnslst);
-  syst := BackendDAE.EQSYSTEM(vars,eqns,NONE(),NONE(),BackendDAE.NO_MATCHING(),{},BackendDAE.UNKNOWN_PARTITION());
-  (me,_,mapEqnIncRow,mapIncRowEqn) := BackendDAEUtil.getAdjacencyMatrixEnhancedScalar(syst, shared,false);
-  m := incidenceMatrixfromEnhanced2(me,vars);
+  syst := BackendDAEUtil.createEqSystem(vars, eqns);
+  (me, _, mapEqnIncRow, mapIncRowEqn) := BackendDAEUtil.getAdjacencyMatrixEnhancedScalar(syst, shared, false);
+  m := incidenceMatrixfromEnhanced2(me, vars);
   // match the equations, umatched are constrained equations
   nv := BackendVariable.varsSize(vars);
   ne := BackendDAEUtil.equationSize(eqns);

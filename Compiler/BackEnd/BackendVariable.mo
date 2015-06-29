@@ -115,11 +115,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setFixedAttr(oattr, SOME(DAE.BCONST(inBoolean)));
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setVarFixed;
 
 public function varFixed "author: PA
@@ -168,11 +169,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct,io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct,io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setStartAttr(oattr, inExp);
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct,io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct,io, unreplaceable);
 end setVarStartValue;
 
 public function setVarStartValueOption "author: Frenkel TUD
@@ -196,11 +198,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setStartAttrOption(oattr, inExp);
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setVarStartValueOption;
 
 public function setVarStartOrigin "author: Frenkel TUD
@@ -224,11 +227,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setStartOrigin(oattr, startOrigin);
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setVarStartOrigin;
 
 public function setVarAttributes "sets the variable attributes of a variable.
@@ -237,22 +241,23 @@ public function setVarAttributes "sets the variable attributes of a variable.
   input Option<DAE.VariableAttributes> attr;
   output BackendDAE.Var outV;
 protected
-   DAE.ComponentRef a;
-    BackendDAE.VarKind b;
-    DAE.VarDirection c;
-    DAE.VarParallelism prl;
-    BackendDAE.Type d;
-    Option<DAE.Exp> e;
-    Option<Values.Value> f;
-    list<DAE.Dimension> g;
-    DAE.ElementSource source;
-    Option<SCode.Comment> s;
+  DAE.ComponentRef a;
+  BackendDAE.VarKind b;
+  DAE.VarDirection c;
+  DAE.VarParallelism prl;
+  BackendDAE.Type d;
+  Option<DAE.Exp> e;
+  Option<Values.Value> f;
+  list<DAE.Dimension> g;
+  DAE.ElementSource source;
+  Option<SCode.Comment> s;
   Option<BackendDAE.TearingSelect> ts;
-    DAE.ConnectorType ct;
-    DAE.VarInnerOuter io;
+  DAE.ConnectorType ct;
+  DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a,b,c,prl,d,e,f,g,source,_,ts,s,ct,io, _) := v;
-  outV := BackendDAE.VAR(a,b,c,prl,d,e,f,g,source,attr,ts,s,ct,io, false);
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, _, ts, s, ct, io, unreplaceable) := v;
+  outV := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, attr, ts, s, ct, io, unreplaceable);
 end setVarAttributes;
 
 public function varStartValue "author: PA
@@ -265,6 +270,14 @@ algorithm
   BackendDAE.VAR(values=attr) := v;
   sv := DAEUtil.getStartAttr(attr);
 end varStartValue;
+
+public function varUnreplaceable "author: lochel
+  Returns the unreplaceable attribute of a variable."
+  input BackendDAE.Var inVar;
+  output Boolean outUnreplaceable;
+algorithm
+  BackendDAE.VAR(unreplaceable=outUnreplaceable) := inVar;
+end varUnreplaceable;
 
 public function varStartValueFail "author: Frenkel TUD
   Returns the DAE.StartValue of a variable if there is one.
@@ -485,11 +498,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setStateSelect(oattr, stateSelect);
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setVarStateSelect;
 
 public function varStateDerivative "author: Frenkel TUD 2013-01
@@ -531,22 +545,24 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
   BackendDAE.VAR(varName=a,
-              varKind=BackendDAE.STATE(index=indx),
-              varDirection=c,
-              varParallelism=prl,
-              varType=d,
-              bindExp=e,
-              bindValue=f,
-              arryDim=g,
-              source=source,
-              values=oattr,
-        tearingSelectOption = ts,
-              comment=s,
-              connectorType=ct,
-              innerOuter=io) := inVar;
-  outVar := BackendDAE.VAR(a,BackendDAE.STATE(indx,dcr),c,prl,d,e,f,g,source,oattr,ts,s,ct,io, false);
+                 varKind=BackendDAE.STATE(index=indx),
+                 varDirection=c,
+                 varParallelism=prl,
+                 varType=d,
+                 bindExp=e,
+                 bindValue=f,
+                 arryDim=g,
+                 source=source,
+                 values=oattr,
+                 tearingSelectOption = ts,
+                 comment=s,
+                 connectorType=ct,
+                 innerOuter=io,
+                 unreplaceable=unreplaceable) := inVar;
+  outVar := BackendDAE.VAR(a, BackendDAE.STATE(indx, dcr), c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setStateDerivative;
 
 public function getVariableAttributefromType
@@ -590,11 +606,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setFinalAttr(oattr, finalPrefix);
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setVarFinal;
 
 public function setVarMinMax "author: Frenkel TUD
@@ -619,12 +636,13 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
   if isSome(inMin) or isSome(inMax) then
-    BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+    BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
     oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
     oattr := DAEUtil.setMinMax(oattr, inMin, inMax);
-    outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+    outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
   else
     outVar := inVar;
   end if;
@@ -651,11 +669,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setUnitAttr(oattr, inUnit);
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setUnit;
 
 public function varNominalValue "author: Frenkel TUD"
@@ -686,11 +705,12 @@ protected
   Option<SCode.Comment> s;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, _) := inVar;
+  BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable) := inVar;
   oattr := if isSome(oattr) then oattr else SOME(getVariableAttributefromType(d));
   oattr := DAEUtil.setNominalAttr(oattr, inExp);
-  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, false);
+  outVar := BackendDAE.VAR(a, b, c, prl, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end setVarNominalValue;
 
 public function varType "author: PA
@@ -1739,21 +1759,23 @@ protected
   Option<SCode.Comment> comment;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(varKind = kind,
-                 varDirection = dir,
-                 varParallelism = prl,
-                 varType = tp,
-                 bindExp = bind,
-                 bindValue = v,
-                 arryDim = dim,
-                 source = source,
-                 values = attr,
-         tearingSelectOption = ts,
-                 comment = comment,
-                 connectorType = ct,
-                 innerOuter = io) := inVar;
-  outVar := BackendDAE.VAR(cr, kind, dir, prl, tp, bind, v, dim, source, attr, ts, comment, ct, io, false);
+  BackendDAE.VAR(varKind=kind,
+                 varDirection=dir,
+                 varParallelism=prl,
+                 varType=tp,
+                 bindExp=bind,
+                 bindValue=v,
+                 arryDim=dim,
+                 source=source,
+                 values=attr,
+                 tearingSelectOption=ts,
+                 comment=comment,
+                 connectorType=ct,
+                 innerOuter=io,
+                 unreplaceable=unreplaceable) := inVar;
+  outVar := BackendDAE.VAR(cr, kind, dir, prl, tp, bind, v, dim, source, attr, ts, comment, ct, io, unreplaceable);
 end copyVarNewName;
 
 public function setVarKindForVar"updates the varkind for an indexed var inside the variable-array.
@@ -1799,21 +1821,23 @@ protected
   DAE.ConnectorType ct;
   BackendDAE.Var oVar;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(varName = cr,
-                 varDirection = dir,
-                 varParallelism = prl,
-                 varType = tp,
-                 bindExp = bind,
-                 bindValue = v,
-                 arryDim = dim,
-                 source = source,
-                 values = attr,
-         tearingSelectOption = ts,
-                 comment = comment,
-                 connectorType = ct,
-                 innerOuter = io) := inVar;
-  outVar := BackendDAE.VAR(cr, inVarKind, dir, prl, tp, bind, v, dim, source, attr, ts, comment, ct, io, false);
+  BackendDAE.VAR(varName=cr,
+                 varDirection=dir,
+                 varParallelism=prl,
+                 varType=tp,
+                 bindExp=bind,
+                 bindValue=v,
+                 arryDim=dim,
+                 source=source,
+                 values=attr,
+                 tearingSelectOption=ts,
+                 comment=comment,
+                 connectorType=ct,
+                 innerOuter=io,
+                 unreplaceable=unreplaceable) := inVar;
+  outVar := BackendDAE.VAR(cr, inVarKind, dir, prl, tp, bind, v, dim, source, attr, ts, comment, ct, io, unreplaceable);
   // referenceUpdate(inVar, 2, new_kind);
 end setVarKind;
 
@@ -1836,21 +1860,23 @@ protected
   DAE.ConnectorType ct;
   BackendDAE.Var oVar;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(varName = cr,
-                 varKind = varKind,
-                 varDirection = dir,
-                 varParallelism = prl,
-                 varType = tp,
-                 bindValue = v,
-                 arryDim = dim,
-                 source = source,
-                 values = attr,
-         tearingSelectOption = ts,
-                 comment = comment,
-                 connectorType = ct,
-                 innerOuter = io) := inVar;
-  outVar := BackendDAE.VAR(cr, varKind, dir, prl, tp, inBindExp, v, dim, source, attr, ts, comment, ct, io, false);
+  BackendDAE.VAR(varName=cr,
+                 varKind=varKind,
+                 varDirection=dir,
+                 varParallelism=prl,
+                 varType=tp,
+                 bindValue=v,
+                 arryDim=dim,
+                 source=source,
+                 values=attr,
+                 tearingSelectOption=ts,
+                 comment=comment,
+                 connectorType=ct,
+                 innerOuter=io,
+                 unreplaceable=unreplaceable) := inVar;
+  outVar := BackendDAE.VAR(cr, varKind, dir, prl, tp, inBindExp, v, dim, source, attr, ts, comment, ct, io, unreplaceable);
 end setBindExp;
 
 public function setBindValue "author: lochel"
@@ -1871,21 +1897,23 @@ protected
   Option<SCode.Comment> comment;
   DAE.ConnectorType ct;
   DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  BackendDAE.VAR(varName = cr,
-                 varKind = varKind,
-                 varDirection = dir,
-                 varParallelism = prl,
-                 varType = tp,
-                 bindExp = bindExp,
-                 arryDim = dim,
-                 source = source,
-                 values = attr,
-         tearingSelectOption = ts,
-                 comment = comment,
-                 connectorType = ct,
-                 innerOuter = io) := inVar;
-  outVar := BackendDAE.VAR(cr, varKind, dir, prl, tp, bindExp, inBindValue, dim, source, attr, ts, comment, ct, io, false);
+  BackendDAE.VAR(varName=cr,
+                 varKind=varKind,
+                 varDirection=dir,
+                 varParallelism=prl,
+                 varType=tp,
+                 bindExp=bindExp,
+                 arryDim=dim,
+                 source=source,
+                 values=attr,
+                 tearingSelectOption=ts,
+                 comment=comment,
+                 connectorType=ct,
+                 innerOuter=io,
+                 unreplaceable=unreplaceable) := inVar;
+  outVar := BackendDAE.VAR(cr, varKind, dir, prl, tp, bindExp, inBindValue, dim, source, attr, ts, comment, ct, io, unreplaceable);
 end setBindValue;
 
 public function setVarDirectionTpl
@@ -1898,47 +1926,43 @@ algorithm
   dir := inDir;
 end setVarDirectionTpl;
 
-public function setVarDirection "author: Frenkel TUD 17-03-11
+public function setVarDirection "author: lochel
   Sets the DAE.VarDirection of a variable"
   input BackendDAE.Var inVar;
-  input DAE.VarDirection varDirection;
+  input DAE.VarDirection inVarDirection;
   output BackendDAE.Var outVar;
+protected
+  DAE.ComponentRef cr;
+  BackendDAE.VarKind kind;
+  DAE.VarParallelism prl;
+  BackendDAE.Type tp;
+  Option<DAE.Exp> bind;
+  Option<Values.Value> v;
+  list<DAE.Dimension> dim;
+  DAE.ElementSource source;
+  Option<DAE.VariableAttributes> attr;
+  Option<BackendDAE.TearingSelect> ts;
+  Option<SCode.Comment> comment;
+  DAE.ConnectorType ct;
+  BackendDAE.Var oVar;
+  DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  outVar := match (inVar,varDirection)
-    local
-      DAE.ComponentRef cr;
-      DAE.VarParallelism prl;
-      BackendDAE.VarKind kind;
-      BackendDAE.Type tp;
-      Option<DAE.Exp> bind;
-      Option<Values.Value> v;
-      list<DAE.Dimension> dim;
-      DAE.ElementSource source;
-      Option<DAE.VariableAttributes> attr;
-    Option<BackendDAE.TearingSelect> ts;
-      Option<SCode.Comment> comment;
-      DAE.ConnectorType ct;
-      BackendDAE.Var oVar;
-      DAE.VarInnerOuter io;
-
-    case (BackendDAE.VAR(varName = cr,
-              varKind = kind,
-              varParallelism = prl,
-              varType = tp,
-              bindExp = bind,
-              bindValue = v,
-              arryDim = dim,
-              source = source,
-              values = attr,
-        tearingSelectOption = ts,
-              comment = comment,
-              connectorType = ct,
-              innerOuter = io),_)
-    equation
-      oVar = BackendDAE.VAR(cr,kind,varDirection,prl,tp,bind,v,dim,source,attr,ts,comment,ct,io,false); // referenceUpdate(inVar, 3, varDirection);
-    then
-      oVar;
-  end match;
+  BackendDAE.VAR(varName=cr,
+                 varKind=kind,
+                 varParallelism=prl,
+                 varType=tp,
+                 bindExp=bind,
+                 bindValue=v,
+                 arryDim=dim,
+                 source=source,
+                 values=attr,
+                 tearingSelectOption=ts,
+                 comment=comment,
+                 connectorType=ct,
+                 innerOuter=io,
+                 unreplaceable=unreplaceable) := inVar;
+  outVar := BackendDAE.VAR(cr, kind, inVarDirection, prl, tp, bind, v, dim, source, attr, ts, comment, ct, io, unreplaceable); // referenceUpdate(inVar, 3, varDirection);
 end setVarDirection;
 
 public function getVarDirection "author: wbraun
@@ -2254,14 +2278,14 @@ algorithm
     local
       DAE.ComponentRef name;
 
-    case DAE.CREF(componentRef=name) then (name,false);
+    case DAE.CREF(componentRef=name) then (name, false);
     case DAE.UNARY(operator=DAE.UMINUS(_),exp=DAE.CREF(componentRef=name)) then (name,true);
     case DAE.UNARY(operator=DAE.UMINUS_ARR(_),exp=DAE.CREF(componentRef=name)) then (name,true);
     case DAE.LUNARY(operator=DAE.NOT(_),exp=DAE.CREF(componentRef=name)) then (name,true);
     case DAE.CALL(path=Absyn.IDENT(name = "der"), expLst={DAE.CREF(componentRef=name)})
       equation
         name = ComponentReference.crefPrefixDer(name);
-      then (name,false);
+      then (name, false);
     case DAE.UNARY(operator=DAE.UMINUS(_),exp=DAE.CALL(path=Absyn.IDENT(name = "der"), expLst={DAE.CREF(componentRef=name)}))
       equation
        name = ComponentReference.crefPrefixDer(name);
@@ -2836,47 +2860,20 @@ public function removeVarDAE
   output BackendDAE.EqSystem osyst;
   output BackendDAE.Var outVar;
 algorithm
-  (osyst,outVar) := match (inVarPos,syst)
+  (osyst,outVar) := match syst
     local
-      BackendDAE.Var var;
-      BackendDAE.Variables ordvars,ordvars1;
-      BackendDAE.EquationArray eqns;
-      Option<BackendDAE.IncidenceMatrix> m,mT;
-      BackendDAE.Matching matching;
-      BackendDAE.StateSets stateSets;
-      BackendDAE.BaseClockPartitionKind partitionKind;
-
-    case (_,BackendDAE.EQSYSTEM(ordvars,eqns,m,mT,matching,stateSets=stateSets,partitionKind=partitionKind))
-      equation
-        (ordvars1,outVar) = removeVar(inVarPos,ordvars);
-      then (BackendDAE.EQSYSTEM(ordvars1,eqns,m,mT,matching,stateSets,partitionKind),outVar);
+      BackendDAE.Variables vars;
+    case BackendDAE.EQSYSTEM(orderedVars=vars)
+      equation (vars, outVar) = removeVar(inVarPos, vars);
+      then (BackendDAEUtil.setEqSystVars(syst, vars), outVar);
   end match;
 end removeVarDAE;
 
-public function removeAliasVars
-"
-remove alias Vars
-"
+public function removeAliasVars "remove alias Vars"
   input BackendDAE.Shared inShared;
   output BackendDAE.Shared outShared;
-protected
-      BackendDAE.Variables knvars, exobj, aliasVars;
-      BackendDAE.EquationArray remeqns, inieqns;
-      list<DAE.Constraint> constrs;
-      list<DAE.ClassAttributes> clsAttrs;
-      FCore.Cache cache;
-      FCore.Graph env;
-      DAE.FunctionTree funcs;
-      BackendDAE.EventInfo einfo;
-      BackendDAE.ExternalObjectClasses eoc;
-      BackendDAE.SymbolicJacobians symjacs;
-      BackendDAE.BackendDAEType btp;
-      BackendDAE.ExtraInfo ei;
 algorithm
-  (BackendDAE.SHARED(knvars, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, env, funcs, einfo, eoc, btp, symjacs, ei)) := inShared;
-  aliasVars := emptyVars();
-  outShared := BackendDAE.SHARED(knvars, exobj, aliasVars, inieqns, remeqns, constrs, clsAttrs, cache, env, funcs, einfo, eoc, btp, symjacs, ei);
-
+  outShared := BackendDAEUtil.setSharedAliasVars(inShared, emptyVars());
 end removeAliasVars;
 
 public function removeVar
@@ -2935,7 +2932,7 @@ end existsVar;
 
 public function makeVar
  input DAE.ComponentRef cr;
- output BackendDAE.Var v = BackendDAE.VAR(cr, BackendDAE.VARIABLE(), DAE.BIDIR(), DAE.NON_PARALLEL(), DAE.T_REAL_DEFAULT, NONE(), NONE(), {}, DAE.emptyElementSource, NONE(), NONE(), NONE(), DAE.NON_CONNECTOR(), DAE.NOT_INNER_OUTER(),false);
+ output BackendDAE.Var v = BackendDAE.VAR(cr, BackendDAE.VARIABLE(), DAE.BIDIR(), DAE.NON_PARALLEL(), DAE.T_REAL_DEFAULT, NONE(), NONE(), {}, DAE.emptyElementSource, NONE(), NONE(), NONE(), DAE.NON_CONNECTOR(), DAE.NOT_INNER_OUTER(), false);
 end makeVar;
 
 public function addVarDAE
@@ -2946,19 +2943,11 @@ public function addVarDAE
   input BackendDAE.EqSystem syst;
   output BackendDAE.EqSystem osyst;
 algorithm
-  osyst := match (inVar,syst)
+  osyst := match syst
     local
-      BackendDAE.Variables ordvars,ordvars1;
-      BackendDAE.EquationArray eqns;
-      Option<BackendDAE.IncidenceMatrix> m,mT;
-      BackendDAE.Matching matching;
-      BackendDAE.StateSets stateSets;
-      BackendDAE.BaseClockPartitionKind partitionKind;
-
-    case (_,BackendDAE.EQSYSTEM(ordvars,eqns,m,mT,matching,stateSets,partitionKind))
-      equation
-        ordvars1 = addVar(inVar,ordvars);
-      then BackendDAE.EQSYSTEM(ordvars1,eqns,m,mT,matching,stateSets,partitionKind);
+      BackendDAE.Variables vars;
+    case BackendDAE.EQSYSTEM(orderedVars=vars)
+      then BackendDAEUtil.setEqSystVars(syst, addVar(inVar, vars));
   end match;
 end addVarDAE;
 
@@ -2970,26 +2959,11 @@ public function addKnVarDAE
   input BackendDAE.Shared shared;
   output BackendDAE.Shared oshared;
 algorithm
-  oshared := match (inVar,shared)
+  oshared := match shared
     local
-      BackendDAE.Variables knvars,exobj,knvars1,aliasVars;
-      BackendDAE.EquationArray remeqns,inieqns;
-      list<DAE.Constraint> constrs;
-      list<DAE.ClassAttributes> clsAttrs;
-      FCore.Cache cache;
-      FCore.Graph graph;
-      DAE.FunctionTree funcs;
-      BackendDAE.EventInfo einfo;
-      BackendDAE.ExternalObjectClasses eoc;
-      BackendDAE.SymbolicJacobians symjacs;
-      BackendDAE.BackendDAEType btp;
-      BackendDAE.ExtraInfo ei;
-
-    case (_,BackendDAE.SHARED(knvars,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei))
-      equation
-        knvars1 = addVar(inVar,knvars);
-      then BackendDAE.SHARED(knvars1,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei);
-
+      BackendDAE.Variables knvars;
+    case BackendDAE.SHARED(knownVars=knvars)
+      then BackendDAEUtil.setSharedKnVars(shared, addVar(inVar, knvars));
   end match;
 end addKnVarDAE;
 
@@ -3001,26 +2975,11 @@ public function addNewKnVarDAE
   input BackendDAE.Shared shared;
   output BackendDAE.Shared oshared;
 algorithm
-  oshared := match (inVar,shared)
+  oshared := match shared
     local
-      BackendDAE.Variables knvars,exobj,knvars1,aliasVars;
-      BackendDAE.EquationArray remeqns,inieqns;
-      list<DAE.Constraint> constrs;
-      list<DAE.ClassAttributes> clsAttrs;
-      FCore.Cache cache;
-      FCore.Graph graph;
-      DAE.FunctionTree funcs;
-      BackendDAE.EventInfo einfo;
-      BackendDAE.ExternalObjectClasses eoc;
-      BackendDAE.SymbolicJacobians symjacs;
-      BackendDAE.BackendDAEType btp;
-      BackendDAE.ExtraInfo ei;
-
-    case (_,BackendDAE.SHARED(knvars,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei))
-      equation
-        knvars1 = addNewVar(inVar,knvars);
-      then BackendDAE.SHARED(knvars1,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei);
-
+      BackendDAE.Variables knvars;
+    case BackendDAE.SHARED(knownVars=knvars)
+      then BackendDAEUtil.setSharedKnVars(shared, addNewVar(inVar, knvars));
   end match;
 end addNewKnVarDAE;
 
@@ -3032,26 +2991,11 @@ public function addAliasVarDAE
   input BackendDAE.Shared shared;
   output BackendDAE.Shared oshared;
 algorithm
-  oshared := match (inVar,shared)
+  oshared := match shared
     local
-      BackendDAE.Variables knvars,exobj,aliasVars;
-      BackendDAE.EquationArray remeqns,inieqns;
-      list<DAE.Constraint> constrs;
-      list<DAE.ClassAttributes> clsAttrs;
-      FCore.Cache cache;
-      FCore.Graph graph;
-      DAE.FunctionTree funcs;
-      BackendDAE.EventInfo einfo;
-      BackendDAE.ExternalObjectClasses eoc;
-      BackendDAE.SymbolicJacobians symjacs;
-      BackendDAE.BackendDAEType btp;
-      BackendDAE.ExtraInfo ei;
-
-    case (_,BackendDAE.SHARED(knvars,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei))
-      equation
-        aliasVars = addVar(inVar,aliasVars);
-      then BackendDAE.SHARED(knvars,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei);
-
+      BackendDAE.Variables aliasVars;
+    case BackendDAE.SHARED(aliasVars=aliasVars)
+      then BackendDAEUtil.setSharedAliasVars(shared, addVar(inVar, aliasVars));
   end match;
 end addAliasVarDAE;
 
@@ -3063,26 +3007,11 @@ public function addNewAliasVarDAE
   input BackendDAE.Shared shared;
   output BackendDAE.Shared oshared;
 algorithm
-  oshared := match (inVar,shared)
+  oshared := match shared
     local
-      BackendDAE.Variables knvars,exobj,aliasVars;
-      BackendDAE.EquationArray remeqns,inieqns;
-      list<DAE.Constraint> constrs;
-      list<DAE.ClassAttributes> clsAttrs;
-      FCore.Cache cache;
-      FCore.Graph graph;
-      DAE.FunctionTree funcs;
-      BackendDAE.EventInfo einfo;
-      BackendDAE.ExternalObjectClasses eoc;
-      BackendDAE.SymbolicJacobians symjacs;
-      BackendDAE.BackendDAEType btp;
-      BackendDAE.ExtraInfo ei;
-
-    case (_,BackendDAE.SHARED(knvars,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei))
-      equation
-        aliasVars = addNewVar(inVar,aliasVars);
-      then BackendDAE.SHARED(knvars,exobj,aliasVars,inieqns,remeqns,constrs,clsAttrs,cache,graph,funcs,einfo,eoc,btp,symjacs,ei);
-
+      BackendDAE.Variables aliasVars;
+    case BackendDAE.SHARED(aliasVars=aliasVars)
+      then BackendDAEUtil.setSharedAliasVars(shared, addNewVar(inVar, aliasVars));
   end match;
 end addNewAliasVarDAE;
 
@@ -3442,7 +3371,7 @@ algorithm
       exp = DAE.RANGE(ty,DAE.ICONST(1),NONE(),DAE.ICONST(stop2));
     then (exp,true);
    else
-     then (inExp,false);
+     then (inExp, false);
   end matchcontinue;
 end computeRangeExps;
 
@@ -3899,47 +3828,45 @@ end traversingisAlgStateVarIndexFinder;
 
 
 public function mergeVariableOperations
-  input BackendDAE.Var var;
-  input list<DAE.SymbolicOperation> iops;
+  input BackendDAE.Var inVar;
+  input list<DAE.SymbolicOperation> inOps;
   output BackendDAE.Var outVar;
+protected
+  DAE.ComponentRef a;
+  BackendDAE.VarKind b;
+  DAE.VarDirection c;
+  DAE.VarParallelism p;
+  BackendDAE.Type d;
+  Option<DAE.Exp> e;
+  Option<Values.Value> f;
+  list<DAE.Dimension> g;
+  DAE.ElementSource source;
+  Option<DAE.VariableAttributes> oattr;
+  Option<BackendDAE.TearingSelect> ts;
+  Option<SCode.Comment> s;
+  DAE.ConnectorType ct;
+  list<DAE.SymbolicOperation> ops;
+  DAE.VarInnerOuter io;
+  Boolean unreplaceable;
 algorithm
-  outVar := match (var,iops)
-    local
-      DAE.ComponentRef a;
-      BackendDAE.VarKind b;
-      DAE.VarDirection c;
-      DAE.VarParallelism p;
-      BackendDAE.Type d;
-      Option<DAE.Exp> e;
-      Option<Values.Value> f;
-      list<DAE.Dimension> g;
-      DAE.ElementSource source;
-      Option<DAE.VariableAttributes> oattr;
-      Option<BackendDAE.TearingSelect> ts;
-      Option<SCode.Comment> s;
-      DAE.ConnectorType ct;
-      list<DAE.SymbolicOperation> ops;
-      DAE.VarInnerOuter io;
-
-    case (BackendDAE.VAR(varName = a,
-              varKind = b,
-              varDirection = c,
-              varParallelism = p,
-              varType = d,
-              bindExp = e,
-              bindValue = f,
-              arryDim = g,
-              source = source,
-              values = oattr,
-        tearingSelectOption = ts,
-              comment = s,
-              connectorType = ct,
-              innerOuter = io),_)
-      equation
-        ops = listReverse(iops);
-        source = List.foldr(ops,DAEUtil.addSymbolicTransformation,source);
-      then BackendDAE.VAR(a,b,c,p,d,e,f,g,source,oattr,ts,s,ct,io,false);
-  end match;
+  BackendDAE.VAR(varName=a,
+                 varKind=b,
+                 varDirection=c,
+                 varParallelism=p,
+                 varType=d,
+                 bindExp=e,
+                 bindValue=f,
+                 arryDim=g,
+                 source=source,
+                 values=oattr,
+                 tearingSelectOption=ts,
+                 comment=s,
+                 connectorType=ct,
+                 innerOuter=io,
+                 unreplaceable=unreplaceable) := inVar;
+  ops := listReverse(inOps);
+  source := List.foldr(ops, DAEUtil.addSymbolicTransformation, source);
+  outVar := BackendDAE.VAR(a, b, c, p, d, e, f, g, source, oattr, ts, s, ct, io, unreplaceable);
 end mergeVariableOperations;
 
 public function mergeAliasVars "author: Frenkel TUD 2011-04"
@@ -4276,7 +4203,7 @@ algorithm
   end matchcontinue;
 end mergeNominalAttribute;
 
-protected function mergeMinMaxAttribute
+public function mergeMinMaxAttribute
   input BackendDAE.Var inAVar;
   input BackendDAE.Var inVar;
   input Boolean negate;
@@ -4304,6 +4231,17 @@ algorithm
     else inVar;
   end matchcontinue;
 end mergeMinMaxAttribute;
+
+public function getMinMaxAttribute
+  input BackendDAE.Var iVar;
+  output Option<DAE.Exp> oMin;
+  output Option<DAE.Exp> oMax;
+protected
+  Option<DAE.VariableAttributes> attr;
+algorithm
+  BackendDAE.VAR(values = attr) := iVar;
+  (oMin, oMax) := DAEUtil.getMinMaxValues(attr);
+end getMinMaxAttribute;
 
 protected function mergeMinMax
   input Boolean negate;
@@ -4466,16 +4404,7 @@ public function selfGeneratedVar
   input DAE.ComponentRef inCref;
   output Boolean b;
 algorithm
-  b := match(inCref)
-    local String ident;
-    case DAE.CREF_QUAL(ident = "$ZERO") then true;
-    case DAE.CREF_QUAL(ident = "$pDER") then true;
-    case DAE.CREF_QUAL(ident = "$DER",componentRef=DAE.CREF_QUAL(ident = "$DER")) then true;
-    // keep them a while untill we know which are needed
-    //case DAE.CREF_QUAL(ident = "$DER") then true;
-    case DAE.CREF_IDENT(ident = ident) then intEq(System.strncmp(ident,"$when",5),0);
-    else false;
-  end match;
+  b := substring(ComponentReference.crefStr(inCref), 1, 1) == "$";
 end selfGeneratedVar;
 
 public function varStateSelectPrioAlias "Helper function to calculateVarPriorities.
@@ -4510,8 +4439,7 @@ algorithm
   end match;
 end stateSelectToInteger;
 
-public function transformXToXd
-"author: PA
+public function transformXToXd "author: PA
   this function transforms x variables (in the state vector)
   to corresponding xd variable (in the derivatives vector)"
   input BackendDAE.Var inVar;
@@ -4527,35 +4455,32 @@ algorithm
       Option<Values.Value> v;
       list<DAE.Dimension> dim;
       Option<DAE.VariableAttributes> attr;
-    Option<BackendDAE.TearingSelect> ts;
+      Option<BackendDAE.TearingSelect> ts;
       Option<SCode.Comment> comment;
       DAE.ConnectorType ct;
       DAE.ElementSource source;
-      BackendDAE.Var backendVar;
       DAE.VarInnerOuter io;
+      Boolean unreplaceable;
 
-    case (BackendDAE.VAR(varName = cr,
-      varKind = BackendDAE.STATE(),
-      varDirection = dir,
-      varParallelism = prl,
-      varType = tp,
-      bindExp = exp,
-      bindValue = v,
-      arryDim = dim,
-      source = source,
-      values = attr,
-    tearingSelectOption = ts,
-      comment = comment,
-      connectorType = ct,
-      innerOuter = io))
-      equation
-        cr = ComponentReference.crefPrefixDer(cr);
-      then
-        BackendDAE.VAR(cr, BackendDAE.STATE_DER(), dir, prl, tp, exp, v, dim, source, attr, ts, comment, ct, io,false);
+    case (BackendDAE.VAR(varName=cr,
+                         varKind=BackendDAE.STATE(),
+                         varDirection=dir,
+                         varParallelism=prl,
+                         varType=tp,
+                         bindExp=exp,
+                         bindValue=v,
+                         arryDim=dim,
+                         source=source,
+                         values=attr,
+                         tearingSelectOption=ts,
+                         comment=comment,
+                         connectorType=ct,
+                         innerOuter=io,
+                         unreplaceable=unreplaceable)) equation
+      cr = ComponentReference.crefPrefixDer(cr);
+    then BackendDAE.VAR(cr, BackendDAE.STATE_DER(), dir, prl, tp, exp, v, dim, source, attr, ts, comment, ct, io, unreplaceable);
 
-    case (backendVar)
-    then
-      backendVar;
+    else inVar;
   end matchcontinue;
 end transformXToXd;
 
@@ -4569,7 +4494,7 @@ algorithm
       DAE.ComponentRef cref;
     case(BackendDAE.VAR(varName=cref))
       equation
-      then ComponentReference.traverseCref(cref,ComponentReference.crefIsRec,false);
+      then ComponentReference.traverseCref(cref,ComponentReference.crefIsRec, false);
   end match;
 end isRecordVar;
 

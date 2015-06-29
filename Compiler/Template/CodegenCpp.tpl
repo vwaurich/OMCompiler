@@ -2,7 +2,7 @@ package CodegenCpp
 
 import interface SimCodeTV;
 import CodegenUtil.*;
-// SECTION: SIMULATION TARGET, ROOT TEMPLATE
+import CodegenCppInit.*;
 
 
 
@@ -58,6 +58,7 @@ template translateModel(SimCode simCode)
         let()= textFile(simulationWriteOutputParameterCppFile(simCode , &extraFuncs , &extraFuncsDecl, "", false),'OMCpp<%fileNamePrefix%>WriteOutputParameter.cpp')
         let()= textFile(simulationWriteOutputAliasVarsCppFile(simCode , &extraFuncs , &extraFuncsDecl, "", stateDerVectorName, false),'OMCpp<%fileNamePrefix%>WriteOutputAliasVars.cpp')
         let()= textFile(simulationFactoryFile(simCode , &extraFuncs , &extraFuncsDecl, ""),'OMCpp<%fileNamePrefix%>FactoryExport.cpp')
+        let()= textFile(modelInitXMLFile(simCode, numRealVars, numIntVars, numBoolVars),'OMCpp<%fileNamePrefix%>Init.xml')
         let()= textFile(simulationMainRunScript(simCode , &extraFuncs , &extraFuncsDecl, "", "", "", "exec"), '<%fileNamePrefix%><%simulationMainRunScriptSuffix(simCode , &extraFuncs , &extraFuncsDecl, "")%>')
         let jac =  (jacobianMatrixes |> (mat, _, _, _, _, _, _) =>
           (mat |> (eqs,_,_) =>  algloopfiles(eqs,simCode , &extraFuncs , &extraFuncsDecl, "",contextAlgloopJacobian, stateDerVectorName, false) ;separator="")
@@ -472,25 +473,19 @@ case SIMCODE(modelInfo=MODELINFO()) then
   }
 
   #elif defined (RUNTIME_STATIC_LINKING)
-    #include <Core/System/FactoryExport.h>
-    #include <Core/DataExchange/SimData.h>
-    #include <Core/System/SimVars.h>
-    #include <SimCoreFactory/OMCFactory/StaticOMCFactory.h>
-    #include "OMCpp<%dotPath(modelInfo.name)%>Extension.h"
-
-    boost::shared_ptr<ISimData> createSimData()
+    boost::shared_ptr<ISimData> createSimDataFunction()
     {
         boost::shared_ptr<ISimData> data( new SimData() );
         return data;
     }
 
-    boost::shared_ptr<ISimVars> createSimVars(size_t dim_real, size_t dim_int, size_t dim_bool, size_t dim_pre_vars, size_t dim_z, size_t z_i)
+    boost::shared_ptr<ISimVars> createSimVarsFunction(size_t dim_real, size_t dim_int, size_t dim_bool, size_t dim_pre_vars, size_t dim_z, size_t z_i)
     {
         boost::shared_ptr<ISimVars> var( new SimVars(dim_real, dim_int, dim_bool, dim_pre_vars, dim_z, z_i) );
         return var;
     }
 
-    boost::shared_ptr<IMixedSystem> createModelicaSystem(IGlobalSettings* globalSettings, boost::shared_ptr<IAlgLoopSolverFactory> algLoopSolverFactory, boost::shared_ptr<ISimData> simData,boost::shared_ptr<ISimVars> simVars)
+    boost::shared_ptr<IMixedSystem> createSystemFunction(IGlobalSettings* globalSettings, boost::shared_ptr<IAlgLoopSolverFactory> algLoopSolverFactory, boost::shared_ptr<ISimData> simData,boost::shared_ptr<ISimVars> simVars)
     {
         boost::shared_ptr<IMixedSystem> system( new <%lastIdentOfPath(modelInfo.name)%>Extension(globalSettings, algLoopSolverFactory, simData,simVars) );
         return system;
@@ -656,7 +651,7 @@ case SIMCODE(modelInfo = MODELINFO(__)) then
     initialAnalyticJacobians(jacIndex, mat, vars, name, sparsepattern, colorList,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace)
     ;separator="";empty)
    <<
-   
+
    <% (jacobianMatrixes |> (mat, _, _, _, _, _, _) hasindex index0 =>
        (mat |> (eqs,_,_) =>  algloopfilesInclude(eqs,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace) ;separator="")
      ;separator="")
@@ -695,7 +690,7 @@ template simulationStateSelectionCppFile(SimCode simCode, Text& extraFuncs, Text
 match simCode
 case SIMCODE(modelInfo = MODELINFO(__)) then
    <<
-   
+
    <%lastIdentOfPath(modelInfo.name)%>StateSelection::<%lastIdentOfPath(modelInfo.name)%>StateSelection(IGlobalSettings* globalSettings, boost::shared_ptr<IAlgLoopSolverFactory> nonlinsolverfactory, boost::shared_ptr<ISimData> sim_data, boost::shared_ptr<ISimVars> sim_vars)
        : <%lastIdentOfPath(modelInfo.name)%>(globalSettings, nonlinsolverfactory, sim_data,sim_vars)
    {
@@ -717,7 +712,7 @@ template simulationWriteOutputCppFile(SimCode simCode ,Text& extraFuncs,Text& ex
 match simCode
 case SIMCODE(modelInfo = MODELINFO(__)) then
    <<
-  
+
 
    <%lastIdentOfPath(modelInfo.name)%>WriteOutput::<%lastIdentOfPath(modelInfo.name)%>WriteOutput(IGlobalSettings* globalSettings, boost::shared_ptr<IAlgLoopSolverFactory> nonlinsolverfactory, boost::shared_ptr<ISimData> sim_data, boost::shared_ptr<ISimVars> sim_vars)
        : <%lastIdentOfPath(modelInfo.name)%>(globalSettings, nonlinsolverfactory, sim_data,sim_vars)
@@ -960,7 +955,7 @@ match simCode
 case SIMCODE(modelInfo = MODELINFO(vars=SIMVARS(__))) then
   let classname = lastIdentOfPath(modelInfo.name)
    <<
-   
+
    <%classname%>Extension::<%classname%>Extension(IGlobalSettings* globalSettings, boost::shared_ptr<IAlgLoopSolverFactory> nonlinsolverfactory, boost::shared_ptr<ISimData> sim_data, boost::shared_ptr<ISimVars> sim_vars)
        : <%classname%>(globalSettings, nonlinsolverfactory, sim_data,sim_vars)
        , <%classname%>WriteOutput(globalSettings,nonlinsolverfactory, sim_data,sim_vars)
@@ -1859,16 +1854,31 @@ case SIMCODE(modelInfo=MODELINFO(__), makefileParams=MAKEFILE_PARAMS(__), simula
   let solver    = settings.method
   let moLib     = makefileParams.compileDir
   let home      = makefileParams.omhome
+  let &includeMeasure = buffer "" /*BUFD*/
   <<
   #include <Core/ModelicaDefine.h>
   #include <Core/Modelica.h>
-  #include <SimController/ISimController.h>
-
+  #include <Core/SimController/ISimController.h>
 
   <%
   match(getConfigString(PROFILING_LEVEL))
      case("none") then ''
-     case("all_perf") then '#include <Core/Utils/extension/measure_time_papi.hpp>'
+     case("all_perf") then
+       <<
+       #ifdef USE_SCOREP
+         #include <Core/Utils/extension/measure_time_scorep.hpp>
+       #else
+         #include <Core/Utils/extension/measure_time_papi.hpp>
+       #endif
+       >>
+     case("all_stat") then
+       <<
+       #ifdef USE_SCOREP
+         #include <Core/Utils/extension/measure_time_scorep.hpp>
+       #else
+         #include <Core/Utils/extension/measure_time_statistic.hpp>
+       #endif
+       >>
      else
        <<
        #ifdef USE_SCOREP
@@ -1879,8 +1889,10 @@ case SIMCODE(modelInfo=MODELINFO(__), makefileParams=MAKEFILE_PARAMS(__), simula
        >>
   end match
   %>
-
   <%additionalIncludes%>
+  #ifdef RUNTIME_STATIC_LINKING
+    #include "OMCpp<%fileNamePrefix%>CalcHelperMain.cpp"
+  #endif
 
   #ifdef USE_BOOST_THREAD
     #include <boost/thread.hpp>
@@ -1927,6 +1939,14 @@ case SIMCODE(modelInfo=MODELINFO(__), makefileParams=MAKEFILE_PARAMS(__), simula
              MeasureTimePAPI::initialize(getThreadNumber);
            #endif
            >>
+          case("all_stat") then
+          <<
+           #ifdef USE_SCOREP
+             MeasureTimeScoreP::initialize();
+           #else
+             MeasureTimeStatistic::initialize();
+           #endif
+          >>
           else
            <<
            #ifdef USE_SCOREP
@@ -1961,7 +1981,7 @@ case SIMCODE(modelInfo=MODELINFO(__), makefileParams=MAKEFILE_PARAMS(__), simula
             <%additionalPreRunCommands%>
 
             #ifdef RUNTIME_STATIC_LINKING
-              boost::shared_ptr<OMCFactory>  _factory =  boost::shared_ptr<OMCFactory>(new StaticOMCFactory());
+              boost::shared_ptr<StaticOMCFactory>  _factory =  boost::shared_ptr<StaticOMCFactory>(new StaticOMCFactory());
             #else
               boost::shared_ptr<OMCFactory>  _factory =  boost::shared_ptr<OMCFactory>(new OMCFactory());
             #endif
@@ -2137,10 +2157,11 @@ template calcHelperMainfile(SimCode simCode ,Text& extraFuncs,Text& extraFuncsDe
     #include <Core/Modelica.h>
     #include <Core/System/FactoryExport.h>
     #include <Core/DataExchange/SimData.h>
+    #include <Core/DataExchange/XmlPropertyReader.h>
     #include <Core/System/SimVars.h>
     #include <Core/System/DiscreteEvents.h>
     #include <Core/System/EventHandling.h>
-    
+
     #include "OMCpp<%fileNamePrefix%>Types.h"
     #include "OMCpp<%fileNamePrefix%>.h"
     #include "OMCpp<%fileNamePrefix%>Functions.h"
@@ -2186,7 +2207,7 @@ template simulationFunctionsFile(SimCode simCode, Text& extraFuncs, Text& extraF
 match simCode
 case SIMCODE(modelInfo=MODELINFO(__)) then
   <<
-  
+
 
   <%externalFunctionIncludes(includes)%>
 
@@ -2451,17 +2472,6 @@ end paramInit3;
 
 
 
-template notparamInit(Variable var, String outStruct, Integer i, Text &varDecls, Text &varInits, SimCode simCode, Text& extraFuncs, Text& extraFuncsDecl, Text extraFuncsNamespace, Text stateDerVectorName /*=__zDot*/, Boolean useFlatArrayNotation)
-::=
-let dump  = match var
-case VARIABLE(__) then
-  match kind
-    case VARIABLE(__) then  varInit(var, "", i, &varDecls /*BUFD*/, &varInits /*BUFC*/, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, true)
-    case DISCRETE(__) then  varInit(var, "", i, &varDecls /*BUFD*/, &varInits /*BUFC*/, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, true)
-  end match
-end match
-""
-end notparamInit;
 
 
 
@@ -2524,9 +2534,9 @@ case SIMCODE(modelInfo=MODELINFO(__), makefileParams=MAKEFILE_PARAMS(__), simula
   # /DNOMINMAX - Define NOMINMAX (does what it says)
   # /TP - Use C++ Compiler
   !IF "$(PCH_FILE)" == ""
-  CFLAGS=  $(SYSTEM_CFLAGS) /I"<%makefileParams.omhome%>/include/omc/cpp/Core/" /I"<%makefileParams.omhome%>/include/omc/cpp/" /I. <%makefileParams.includes%>  /I"$(BOOST_INCLUDE)" /I"$(UMFPACK_INCLUDE)" /DNOMINMAX /TP /DNO_INTERACTIVE_DEPENDENCY <%additionalCFlags_MSVC%>
+  CFLAGS=  $(SYSTEM_CFLAGS) /I"<%makefileParams.omhome%>/include/omc/cpp/" /I. <%makefileParams.includes%>  /I"$(BOOST_INCLUDE)" /I"$(UMFPACK_INCLUDE)" /DNOMINMAX /TP /DNO_INTERACTIVE_DEPENDENCY <%additionalCFlags_MSVC%>
   !ELSE
-  CFLAGS=  $(SYSTEM_CFLAGS) /I"<%makefileParams.omhome%>/include/omc/cpp/Core/" /I"<%makefileParams.omhome%>/include/omc/cpp/" /I. <%makefileParams.includes%>  /I"$(BOOST_INCLUDE)" /I"$(UMFPACK_INCLUDE)" /DNOMINMAX /TP /DNO_INTERACTIVE_DEPENDENCY  /Fp<%makefileParams.omhome%>/include/omc/cpp/Core/$(PCH_FILE)  /YuCore/$(H_FILE) <%additionalCFlags_MSVC%>
+  CFLAGS=  $(SYSTEM_CFLAGS) /I"<%makefileParams.omhome%>/include/omc/cpp/" /I. <%makefileParams.includes%>  /I"$(BOOST_INCLUDE)" /I"$(UMFPACK_INCLUDE)" /DNOMINMAX /TP /DNO_INTERACTIVE_DEPENDENCY  /Fp<%makefileParams.omhome%>/include/omc/cpp/Core/$(PCH_FILE)  /YuCore/$(H_FILE) <%additionalCFlags_MSVC%>
   !ENDIF
   CPPFLAGS =
   # /ZI enable Edit and Continue debug info
@@ -2537,9 +2547,9 @@ case SIMCODE(modelInfo=MODELINFO(__), makefileParams=MAKEFILE_PARAMS(__), simula
   # /LIBPATH: - Directories where libs can be found
   #LDFLAGS=/MDd   /link /DLL /NOENTRY /LIBPATH:"<%makefileParams.omhome%>/lib/<%getTriple()%>/omc/cpp/msvc" /LIBPATH:"<%makefileParams.omhome%>/bin" /LIBPATH:"$(BOOST_LIBS)" OMCppSystem.lib OMCppMath.lib
   #LDSYSTEMFLAGS=/MD /Debug  /link /DLL /NOENTRY /LIBPATH:"<%makefileParams.omhome%>/lib/<%getTriple()%>/omc/cpp/msvc" /LIBPATH:"<%makefileParams.omhome%>/bin" /LIBPATH:"$(BOOST_LIBS)" OMCppSystem.lib OMCppModelicaUtilities.lib  OMCppMath.lib   OMCppOMCFactory.lib
-  LDSYSTEMFLAGS=  /link /DLL /NOENTRY /LIBPATH:"<%makefileParams.omhome%>/lib/<%getTriple()%>/omc/cpp/msvc" /LIBPATH:"<%makefileParams.omhome%>/bin" /LIBPATH:"$(BOOST_LIBS)" OMCppSystem.lib OMCppModelicaUtilities.lib  OMCppMath.lib   OMCppOMCFactory.lib <%timeMeasureLink%>
+  LDSYSTEMFLAGS=  /link /DLL /NOENTRY /LIBPATH:"<%makefileParams.omhome%>/lib/<%getTriple()%>/omc/cpp/msvc" /LIBPATH:"<%makefileParams.omhome%>/bin" /LIBPATH:"$(BOOST_LIBS)" OMCppSystem.lib OMCppModelicaUtilities.lib  OMCppMath.lib OMCppDataExchange_static.lib  OMCppOMCFactory_static.lib <%timeMeasureLink%>
   #LDMAINFLAGS=/MD /Debug  /link /LIBPATH:"<%makefileParams.omhome%>/lib/<%getTriple()%>/omc/cpp/msvc" OMCppOMCFactory.lib  /LIBPATH:"<%makefileParams.omhome%>/bin" /LIBPATH:"$(BOOST_LIBS)"
-  LDMAINFLAGS=/link /LIBPATH:"<%makefileParams.omhome%>/lib/<%getTriple()%>/omc/cpp/msvc" OMCppOMCFactory.lib OMCppModelicaUtilities.lib <%timeMeasureLink%> /LIBPATH:"<%makefileParams.omhome%>/bin" /LIBPATH:"$(BOOST_LIBS)"
+  LDMAINFLAGS=/link /LIBPATH:"<%makefileParams.omhome%>/lib/<%getTriple()%>/omc/cpp/msvc" OMCppOMCFactory_static.lib OMCppModelicaUtilities.lib <%timeMeasureLink%> /LIBPATH:"<%makefileParams.omhome%>/bin" /LIBPATH:"$(BOOST_LIBS)"
   # /MDd link with MSVCRTD.LIB debug lib
   # lib names should not be appended with a d just switch to lib/omc/cpp
 
@@ -2574,15 +2584,11 @@ case "gcc" then
             let libsStr = (makefileParams.libs |> lib => lib ;separator=" ")
             let libsPos1 = if not dirExtra then libsStr //else ""
             let libsPos2 = if dirExtra then libsStr // else ""
-            let staticLibs = '$(LIBOMCPPOMCFACTORY) $(LIBOMCPPSIMCONTROLLER) $(LIBOMCPPSIMULATIONSETTINGS) $(LIBOMCPPSYSTEM) $(LIBOMCPPDATAEXCHANGE) $(LIBOMCPPNEWTON) $(LIBOMCPPUMFPACK)  $(LIBOMCPPIDA) $(LIBOMCPPKINSOL) $(LIBOMCPPCVODE) $(LIBOMCPPSOLVER) $(LIBOMCPPMATH) $(LIBOMCPPMODELICAUTILITIES) -L$(SUNDIALS_LIBS) -L$(UMFPACK_LIBS) -L$(LAPACK_LIBS)'
+            let staticLibs = '-lOMCppOMCFactory_static -lOMCppSimController_static -lOMCppSimulationSettings_static -lOMCppSystem_static -lOMCppNewton_static -lOMCppEuler_static -lOMCppKinsol_static -lOMCppCVode_static -lOMCppSolver_static -lOMCppMath_static -lOMCppModelicaUtilities_static -lOMCppExtensionUtilities_static -L$(SUNDIALS_LIBS) -L$(UMFPACK_LIBS) -L$(LAPACK_LIBS)'
             let staticIncludes = '-I"$(SUNDIALS_INCLUDE)" -I"$(SUNDIALS_INCLUDE)/kinsol" -I"$(SUNDIALS_INCLUDE)/nvector"'
             let _extraCflags = match sopt case SOME(s as SIMULATION_SETTINGS(__)) then ""
             let extraCflags = '<%_extraCflags%><% if Flags.isSet(Flags.GEN_DEBUG_SYMBOLS) then " -g"%>'
-            let &timeMeasureLink +=
-                match(getConfigString(PROFILING_LEVEL))
-                    case("all_perf") then ' -Wl,-rpath,"$(OMHOME)/lib/<%getTriple()%>/omc/cpp" -lOMCppExtensionUtilities -lOMCppExtensionUtilities_papi -lpapi'
-                    else ' -Wl,-rpath,"$(OMHOME)/lib/<%getTriple()%>/omc/cpp" -lOMCppExtensionUtilities'
-                end match
+            let papiLibs = ' -lOMCppExtensionUtilities_papi -lpapi'
             let CC = if (compileForMPI) then "mpicc" else '<%makefileParams.ccompiler%>'
             let CXX = if (compileForMPI) then "mpicxx" else '<%makefileParams.cxxcompiler%>'
             let extraCppFlags = (getConfigStringList(CPP_FLAGS) |> flag => '<%flag%>'; separator=" ")
@@ -2602,16 +2608,47 @@ case "gcc" then
 
             EXEEXT=<%makefileParams.exeext%>
             DLLEXT=<%makefileParams.dllext%>
-            CFLAGS_BASED_ON_INIT_FILE=<%extraCflags%>
-            CFLAGS=$(CFLAGS_BASED_ON_INIT_FILE) -Winvalid-pch $(SYSTEM_CFLAGS) -I"$(OMHOME)/include/omc/cpp/Core" -I"$(OMHOME)/include/omc/cpp/" -I. <%makefileParams.includes%> -I"$(BOOST_INCLUDE)" -I"$(UMFPACK_INCLUDE)" <%makefileParams.includes ; separator=" "%> <%match sopt case SOME(s as SIMULATION_SETTINGS(__)) then s.cflags %> <%additionalCFlags_GCC%>
-            CFLAGS_STATIC=$(CFLAGS) <%staticIncludes%> -DRUNTIME_STATIC_LINKING
+
+            CFLAGS_COMMON=<%extraCflags%> -Winvalid-pch $(SYSTEM_CFLAGS) -I"$(SCOREP_INCLUDE)" -I"$(OMHOME)/include/omc/cpp/" -I. <%makefileParams.includes%> -I"$(BOOST_INCLUDE)" -I"$(UMFPACK_INCLUDE)" <%makefileParams.includes ; separator=" "%> <%match sopt case SOME(s as SIMULATION_SETTINGS(__)) then s.cflags %> <%additionalCFlags_GCC%> <%extraCppFlags%>
+
+            ifeq ($(USE_SCOREP),ON)
+            $(eval CC=scorep --user --nocompiler $(CC))
+            $(eval CXX=scorep --user --nocompiler $(CXX))
+            else
+            $(eval CFLAGS_COMMON=$(CFLAGS_COMMON) -DMEASURETIME_PROFILEBLOCKS)
+            endif
+
+            CFLAGS_DYNAMIC=$(CFLAGS_COMMON)
+            CFLAGS_STATIC=$(CFLAGS_COMMON) <%staticIncludes%> -DRUNTIME_STATIC_LINKING
 
             MODELICA_EXTERNAL_LIBS=-lModelicaExternalC -lModelicaStandardTables -L$(LAPACK_LIBS) $(LAPACK_LIBRARIES)
-            LDSYSTEMFLAGS=-L"$(OMHOME)/lib/<%getTriple()%>/omc/cpp" $(BASE_LIB)  -lOMCppOMCFactory_static -lOMCppSystem -lOMCppModelicaUtilities -lOMCppMath <%additionalLinkerFlags_GCC%> <%timeMeasureLink%> -L"$(BOOST_LIBS)" $(BOOST_LIBRARIES) $(LINUX_LIB_DL)
-            LDSYSTEMFLAGS_STATIC=<%staticLibs%> $(LDSYSTEMFLAGS)
-            LDMAINFLAGS=-L"$(OMHOME)/lib/<%getTriple()%>/omc/cpp" -L"$(OMHOME)/bin" -lOMCppOMCFactory_static -lOMCppModelicaUtilities -L"$(BOOST_LIBS)" $(BOOST_LIBRARIES) $(LINUX_LIB_DL) <%additionalLinkerFlags_GCC%> <%timeMeasureLink%>
-            LDMAINFLAGS_STATIC=<%staticLibs%> $(LDMAINFLAGS)
-            CPPFLAGS = $(CFLAGS) <%extraCppFlags%>
+
+            LDSYSTEMFLAGS_COMMON=-L"$(OMHOME)/lib/<%getTriple()%>/omc/cpp" $(BASE_LIB) <%additionalLinkerFlags_GCC%> -lOMCppDataExchange_static -Wl,-rpath,"$(OMHOME)/lib/<%getTriple()%>/omc/cpp" <%timeMeasureLink%> -L"$(BOOST_LIBS)" $(BOOST_LIBRARIES) $(LINUX_LIB_DL)
+            LDMAINFLAGS_COMMON=-L"$(OMHOME)/lib/<%getTriple()%>/omc/cpp" -L"$(OMHOME)/bin" -L"$(BOOST_LIBS)" $(BOOST_LIBRARIES) $(LINUX_LIB_DL) <%additionalLinkerFlags_GCC%>  -lOMCppDataExchange_static -Wl,-rpath,"$(OMHOME)/lib/<%getTriple()%>/omc/cpp"
+
+            ifeq ($(USE_PAPI),ON)
+            $(eval LDMAINFLAGS_COMMON=$(LDMAINFLAGS_COMMON) <%papiLibs%>)
+            $(eval LDSYSTEMFLAGS_COMMON=$(LDSYSTEMFLAGS_COMMON) <%papiLibs%>)
+            endif
+
+            LDSYSTEMFLAGS_DYNAMIC=-lOMCppSystem -lOMCppModelicaUtilities -lOMCppMath -lOMCppExtensionUtilities -lOMCppOMCFactory $(LDSYSTEMFLAGS_COMMON)
+            LDSYSTEMFLAGS_STATIC=<%staticLibs%> $(LDSYSTEMFLAGS_COMMON)
+
+            LDMAINFLAGS_DYNAMIC= -lOMCppOMCFactory -lOMCppModelicaUtilities -lOMCppExtensionUtilities $(LDMAINFLAGS_COMMON)
+            LDMAINFLAGS_STATIC=<%staticLibs%> $(LDMAINFLAGS_COMMON) $(SUNDIALS_LIBRARIES) $(LAPACK_LIBRARIES)
+
+            ifeq ($(RUNTIME_STATIC_LINKING),ON)
+            $(eval CFLAGS=$(CFLAGS_STATIC))
+            $(eval LDSYSTEMFLAGS=$(LDSYSTEMFLAGS_STATIC))
+            $(eval LDMAINFLAGS=$(LDMAINFLAGS_STATIC))
+            else
+            $(eval CFLAGS=$(CFLAGS_DYNAMIC))
+            $(eval LDSYSTEMFLAGS=$(LDSYSTEMFLAGS_DYNAMIC))
+            $(eval LDMAINFLAGS=$(LDMAINFLAGS_DYNAMIC))
+            endif
+
+            CPPFLAGS=$(CFLAGS)
+
             SYSTEMFILE=OMCpp<%fileNamePrefix%><% if acceptMetaModelicaGrammar() then ".conv"%>.cpp
             MAINFILE = OMCpp<%fileNamePrefix%>Main.cpp
             MAINOBJ=<%fileNamePrefix%>$(EXEEXT)
@@ -2626,14 +2663,12 @@ case "gcc" then
             .PHONY: <%lastIdentOfPath(modelInfo.name)%> $(CPPFILES)
 
             <%fileNamePrefix%>: $(MAINFILE) $(OFILES)
+
             ifeq ($(RUNTIME_STATIC_LINKING),ON)
-            <%\t%>$(eval CFLAGS=$(CFLAGS_STATIC))
-            <%\t%>$(eval LDMAINFLAGS=$(LDMAINFLAGS_STATIC))
-            <%\t%>$(eval LDSYTEMFLAGS=$(LDSYSTEMFLAGS_STATIC))
-            <%\t%>$(CXX) $(CPPFLAGS) -I. -o $(MAINOBJ) $(OFILES) $(MAINFILE) $(LDMAINFLAGS) $(MODELICA_EXTERNAL_LIBS)
+            <%\t%>$(CXX) $(CFLAGS) -I. -o $(MAINOBJ) $(MAINFILE) $(LDMAINFLAGS) $(MODELICA_EXTERNAL_LIBS)
             else
             <%\t%>$(CXX) -shared -o $(SYSTEMOBJ) $(OFILES) <%dirExtra%> <%libsPos1%> <%libsPos2%> $(LDSYSTEMFLAGS) $(MODELICA_EXTERNAL_LIBS)
-            <%\t%>$(CXX) $(CPPFLAGS) -I. -o $(MAINOBJ) $(MAINFILE) $(LDMAINFLAGS)
+            <%\t%>$(CXX) $(CFLAGS) -I. -o $(MAINOBJ) $(MAINFILE) $(LDMAINFLAGS)
             endif
 
             <%if boolNot(stringEq(makefileParams.platform, "win32")) then
@@ -3096,7 +3131,7 @@ match simCode
             measuredFunctionEndValues = MeasureTime::getZeroValues();
 
             measureTimeFunctionsArray[0] = MeasureTimeData("evaluateODE");
-            measureTimeFunctionsArray[1] = MeasureTimeData("evaluateAll_wo_ODE");
+            measureTimeFunctionsArray[1] = MeasureTimeData("evaluateAll");
             measureTimeFunctionsArray[2] = MeasureTimeData("writeOutput");
             measureTimeFunctionsArray[3] = MeasureTimeData("handleTimeEvents");
             #endif //MEASURETIME_MODELFUNCTIONS
@@ -3132,7 +3167,7 @@ case SIMCODE(modelInfo = MODELINFO(__)) then
 match eq
     case SES_LINEAR(lSystem = ls as LINEARSYSTEM(__)) then
    <<
-   
+
    <%if Flags.isSet(Flags.WRITE_TO_BUFFER) then '#include "Math/ArrayOperations.h"'%>
 
 
@@ -3194,7 +3229,7 @@ match eq
 
     case SES_NONLINEAR(nlSystem = nls as NONLINEARSYSTEM(__)) then
    <<
-   
+
    <%if Flags.isSet(Flags.WRITE_TO_BUFFER) then '#include "Math/ArrayOperations.h"'%>
 
 
@@ -4038,7 +4073,7 @@ case FUNCTION(__) then
   let &varInits = buffer "" /*BUFD*/
   //let retVar = if outVars then tempDecl(retType, &varDecls /*BUFD*/)
   //let stateVar = if not acceptMetaModelicaGrammar() then tempDecl("state", &varDecls /*BUFD*/)
-  let _ = (variableDeclarations |> var hasindex i1 fromindex 1 =>
+  let _ = (variableDeclarations |> var as  VARIABLE(__) hasindex i1 fromindex 1 =>
       varInit(var, "", i1, &varDecls, &varInits, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation) ; empty /* increase the counter! */)
 
   //let addRootsInputs = (functionArguments |> var => addRoots(var) ;separator="\n")
@@ -4118,18 +4153,22 @@ case efn as EXTERNAL_FUNCTION(extArgs=extArgs) then
   let fname = underscorePath(name)
   let retType = if outVars then '<%fname%>RetType' else "void"
   let &preExp = buffer "" /*BUFD*/
-  let &varDecls = buffer "" /*BUFD*/
+  let &varDeclsInit = buffer "" /*BUFD*/
+  let &varDeclsExtFunCall = buffer "" /*BUFD*/
+  let &varDeclsOutput = buffer "" /*BUFD*/
+  let &varDeclsvOutputTuple = buffer "" /*BUFD*/
+
   let &inputAssign = buffer "" /*BUFD*/
   let &outputAssign = buffer "" /*BUFD*/
   // make sure the variable is named "out", doh!
    let retVar = if outVars then '_<%fname%>'
   let &outVarInits = buffer ""
   let callPart =  match outVars   case {var} then
-                    extFunCall(fn, &preExp, &varDecls, &inputAssign, &outputAssign, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation, false)
+                    extFunCall(fn, &preExp, &varDeclsExtFunCall, &inputAssign, &outputAssign, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation, false)
                   else
-                    extFunCall(fn, &preExp, &varDecls, &inputAssign, &outputAssign, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation, true)
-  let _ = ( outVars |> var hasindex i1 fromindex 1 =>
-            varInit(var, retVar, i1, &varDecls, &outVarInits, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation) ///TOODOO
+                    extFunCall(fn, &preExp, &varDeclsExtFunCall, &inputAssign, &outputAssign, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation, true)
+  let _ = ( outVars |> var as  VARIABLE(__)  hasindex i1 fromindex 1 =>
+            varInit(var, retVar, i1, &varDeclsInit, &outVarInits, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation) ///TOODOO
             ; empty /* increase the counter! */
           )
   let &outVarAssign = buffer ""
@@ -4138,13 +4177,10 @@ case efn as EXTERNAL_FUNCTION(extArgs=extArgs) then
 
   case {var} then
      //(outVars |> var hasindex i1 fromindex 0 =>
-      varOutput(fn, var,0, &varDecls, &outVarInits, &outVarCopy, &outVarAssign, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
+      varOutput(fn, var,0, &varDeclsOutput, &outVarInits, &outVarCopy, &outVarAssign, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
      // ;separator="\n"; empty /* increase the counter! */
-
-
-
   else
-    (List.restOrEmpty(outVars) |> var hasindex i1 fromindex 1 =>  varOutputTuple(fn, var, i1, &varDecls, &outVarInits, &outVarCopy, &outVarAssign, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
+    (List.restOrEmpty(outVars) |> var hasindex i1 fromindex 1 =>  varOutputTuple(fn, var, i1, &varDeclsvOutputTuple, &outVarInits, &outVarCopy, &outVarAssign, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
     ;separator="\n"; empty /* increase the counter! */
     )
    end match
@@ -4162,19 +4198,28 @@ case efn as EXTERNAL_FUNCTION(extArgs=extArgs) then
 
    else
      //(List.restOrEmpty(outVars) |> var hasindex i1 fromindex 1 =>  varOutputTuple(fn, var,i1, &varDecls1, &outVarInits1, &outVarCopy1, &outVarAssign1, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, useFlatArrayNotation)
-     (outVars |> var hasindex i1 fromindex 0 =>  varOutputTuple(fn, var, i1, &varDecls, &outVarInits, &outVarCopy1, &outVarAssign1, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
+     (outVars |> var hasindex i1 fromindex 0 =>  varOutputTuple(fn, var, i1, &varDeclsvOutputTuple, &outVarInits, &outVarCopy1, &outVarAssign1, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
      ;separator="\n"; empty /* increase the counter! */)
   end match
     let functionBodyExternalFunctionreturn = match outVarAssign1
-   case "" then << <%if retVar then 'output = <%retVar%>;' %> >>
+   case "" then << <%if retVar then 'output = <%retVar%>;' else '/*no output*/' %> >>
    else outVarAssign1
+
+
 
 
   let fnBody = <<
   void /*<%retType%>*/ Functions::<%fname%>(<%funArgs |> var => funArgDefinition(var,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation) ;separator=", "%><%if funArgs then if outVars then "," else ""%> <%if retVar then '<%retType%>& output' %>)/*function2*/
   {
     /* functionBodyExternalFunction: varDecls */
-    <%varDecls%>
+    /*1*/
+    <%varDeclsInit%>
+    /*2*/
+    <%varDeclsExtFunCall%>
+    /*3*/
+    <%varDeclsOutput%>
+    /*4*/
+    <%varDeclsvOutputTuple%>
     /* functionBodyExternalFunction: preExp */
     <%preExp%>
     <%inputAssign%>
@@ -4182,9 +4227,9 @@ case efn as EXTERNAL_FUNCTION(extArgs=extArgs) then
     <%outVarInits%>
     /* functionBodyExternalFunction: callPart */
     <%callPart%>
-    <%outputAssign%>
-    /* functionBodyExternalFunction: return */
-    <%functionBodyExternalFunctionreturn%>
+
+    <%outVarAssign%>
+
   }
   >>
   <<
@@ -4213,6 +4258,13 @@ case efn as EXTERNAL_FUNCTION(extArgs=extArgs) then
   >>
 end functionBodyExternalFunction;
 
+template funArgName(Variable var)
+::=
+  let &auxFunction = buffer ""
+  match var
+  case VARIABLE(__) then contextCref2(name,contextFunction)
+  case FUNCTION_PTR(__) then '_' + name
+end funArgName;
 
 template writeOutVar(Variable var, Integer index)
  "Generates code for writing a variable to outVar."
@@ -4343,28 +4395,35 @@ case EXTERNAL_FUNCTION(__) then
       extArg(arg, &preExp, &varDecls, &inputAssign, &outputAssign, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
     ;separator=", ")
   let returnAssign = match extReturn case SIMEXTARG(cref=c) then
-      '<%extVarName2(c)%> = '
+     '<%contextCref2(c,contextFunction)%> ='// '<%extVarName2(c)%> = '
     else
       ""
+
+
+
   <<
   <%varDecs%>
   <%match extReturn case SIMEXTARG(__) then extFunCallVardecl(extReturn, &varDecls /*BUFD*/)%>
   <%dynamicCheck%>
+  /*test0*/
   <%returnAssign%><%extName%>(<%args%>);
-  <%extArgs |> arg => extFunCallVarcopy(arg,fname,useTuple, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation) ;separator="\n"%>
-  <%match extReturn case SIMEXTARG(__) then extFunCallVarcopy(extReturn,fname,useTuple, simCode , &extraFuncs , &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>
   >>
-end extFunCallC;
+   /*test1*/
+ // <%extArgs |> arg => extFunCallVarcopy(arg,fname,useTuple, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation) ;separator="\n"%>
+  /*test2*/
+  //<%match extReturn case SIMEXTARG(__) then extFunCallVarcopy(extReturn,fname,useTuple, simCode , &extraFuncs , &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>
+  /*test3*/
 
+end extFunCallC;
 template extFunCallVarcopy(SimExtArg arg, String fnName,Boolean useTuple, SimCode simCode ,Text& extraFuncs,Text& extraFuncsDecl,Text extraFuncsNamespace, Text stateDerVectorName /*=__zDot*/, Boolean useFlatArrayNotation)
  "Helper to extFunCall."
 ::=
 match arg
 case SIMEXTARG(outputIndex=oi, isArray=false, type_=ty, cref=c) then
   match oi case 0 then
-  ""
+  "/*no ouput index */"
   else
-   let cr = '<%extVarName2(c)%>'
+   let cr = contextCref2(c,contextFunction)//'<%extVarName2(c)%>'
     match useTuple
     case true then
     let assginBegin = 'boost::get<<%intAdd(-1,oi)%>>('
@@ -4378,6 +4437,28 @@ case SIMEXTARG(outputIndex=oi, isArray=false, type_=ty, cref=c) then
     else
     <<
      _<%fnName%> = <%cr%>;
+    >>
+  case SIMEXTARG(outputIndex=oi, isArray=true, type_=ty, cref=c) then
+  match oi case 0 then
+  "/*no ouput index */"
+  else
+   let cr = contextCref2(c,contextFunction)//'<%extVarName2(c)%>'
+    match useTuple
+    case true then
+    let assginBegin = 'boost::get<<%intAdd(-1,oi)%>>('
+      let assginEnd = ')'
+
+
+    /* <%assginBegin%>  output.data<%assginEnd%> = <%cr%>;*/
+    <<
+     /*array assign*/
+      <%contextCref(c,contextFunction,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>.assign(<%cr%>);
+    >>
+
+    else
+    <<
+    /*array assign*/
+     _<%fnName%>.assign(<%cr%>);
     >>
 
     end match
@@ -4417,11 +4498,9 @@ template extArg(SimExtArg extArg, Text &preExp, Text &varDecls, Text &inputAssig
   match extArg
   case SIMEXTARG(cref=c, outputIndex=oi, isArray=true, type_=t) then
     //let name = if oi then 'out.targTest5<%oi%>' else contextCref2(c,contextFunction)
-  let name = contextCref2(c,contextFunction)
-    let shortTypeStr = expTypeShort(t)
   let arrayArg = extCArrayArg(extArg, &preExp, &varDecls, &inputAssign /*BUFD*/, &outputAssign /*BUFD*/)
   <<
-  <%arrayArg%>
+  <%arrayArg%>/*testarray*/
   >>
 
   case SIMEXTARG(cref=c, isInput=ii, outputIndex=0, type_=t) then
@@ -4467,7 +4546,7 @@ case SIMEXTARG(cref=c, isInput =iI, outputIndex=oi, isArray=true, type_=t)then
       let arg = if extCStr then 'CStrArray(<%tmp%>)' else '<%tmp%>.getData()'
       '<%arg%>'
     else
-      let arg = if extCStr then 'CStrArray(<%name%>)' else '<%name%>.getData()'
+      let arg = if extCStr then 'CStrArray(<%name%>)' else '<%name%>.getData()/*testconvert*/'
       '<%arg%>'
 end extCArrayArg;
 
@@ -4644,7 +4723,7 @@ case var as VARIABLE(ty = T_STRING(__)) then
         >>
       ""
     else
-      let &varAssign += 'output /*_<%fname%> */= <%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>;<%\n%>'
+      let &varAssign += /*_<%fname%> */'output = <%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>;<%\n%>'
       ""
 case var as VARIABLE(__) then
   let marker = '<%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>'
@@ -4652,11 +4731,11 @@ case var as VARIABLE(__) then
   //let &varAssign += '// varOutput varAssign(<%marker%>) <%\n%>'
 
   if instDims then
-    let &varAssign += '/*_<%fname%>*/ output.assign(<%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>);<%\n%>'
+    let &varAssign += /*_<%fname%>*/'output.assign(<%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>);<%\n%>'
     //let &varAssign += '<%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>;<%\n%>'
     ""
   else
-    let &varAssign += 'output /*_<%fname%>*/ = <%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>;<%\n%>'
+    let &varAssign += /*_<%fname%>*/ 'output  = <%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>;<%\n%>'
     //let &varAssign += '<%contextCref(var.name,contextFunction,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>;<%\n%>'
     ""
   case var as FUNCTION_PTR(__) then
@@ -4708,13 +4787,13 @@ case var as VARIABLE(__) then
   else
    // let &varInits += initRecordMembers(var)
     let &varAssign += ' <%assginBegin%>(/*_<%fname%>*/output.data) = <%contextCref(var.name,contextFunction,simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)%>/*TestVarAssign5*/;<%\n%> '
-    ""
+    "/*testcase1*/"
 case var as FUNCTION_PTR(__) then
     let &varAssign += '/*_<%fname%>*/ output = (modelica_fnptr) _<%var.name%>;<%\n%>'
-    ""
+    "/*testcase2*/"
 else
 let &varAssign += '/*iregendwas*/'
-    ""
+    "/*testcase3*/"
 end varOutputTuple;
 
 
@@ -5058,14 +5137,13 @@ case SIMCODE(modelInfo = MODELINFO(__))  then
    <<
    void <%lastIdentOfPath(modelInfo.name)%>Initialize::initialize()
    {
-
-
-
       initializeMemory();
-
+      //IPropertyReader *reader = new XmlPropertyReader("OMCpp<%fileNamePrefix%>Init.xml");
+      //reader->readInitialValues(_sim_vars);
       initializeFreeVariables();
       initializeBoundVariables();
       saveAll();
+      //delete reader;
    }
 
    void <%lastIdentOfPath(modelInfo.name)%>Initialize::initializeMemory()
@@ -6007,7 +6085,22 @@ case SIMCODE(modelInfo=MODELINFO(__), extObjInfo=EXTOBJINFO(__)) then
   <%
   match(getConfigString(PROFILING_LEVEL))
      case("none") then ''
-     case("all_perf") then '#include <Core/Utils/extension/measure_time_papi.hpp>'
+     case("all_perf") then
+       <<
+       #ifdef USE_SCOREP
+         #include <Core/Utils/extension/measure_time_scorep.hpp>
+       #else
+         #include <Core/Utils/extension/measure_time_papi.hpp>
+       #endif
+       >>
+     case("all_stat") then
+       <<
+       #ifdef USE_SCOREP
+         #include <Core/Utils/extension/measure_time_scorep.hpp>
+       #else
+         #include <Core/Utils/extension/measure_time_statistic.hpp>
+       #endif
+       >>
      else
        <<
        #ifdef USE_SCOREP
@@ -6019,29 +6112,8 @@ case SIMCODE(modelInfo=MODELINFO(__), extObjInfo=EXTOBJINFO(__)) then
   end match
   %>
 
-  #include "System/SystemDefaultImplementation.h"
-  /*includes removed for static linking not needed any more
-  #ifdef RUNTIME_STATIC_LINKING
-    #include <boost/shared_ptr.hpp>
-    #include <boost/weak_ptr.hpp>
-    #include <boost/numeric/ublas/vector.hpp>
-    #include <boost/numeric/ublas/matrix.hpp>
-    #include <string>
-    #include <vector>
-    #include <map>
+  #include <Core/System/SystemDefaultImplementation.h>
 
-    using std::string;
-    using std::vector;
-    using std::map;
-
-    #include <SimCoreFactory/Policies/FactoryConfig.h>
-    #include <SimController/ISimController.h>
-    #include <System/IMixedSystem.h>
-
-    #include <boost/numeric/ublas/matrix_sparse.hpp>
-    typedef uBlas::compressed_matrix<double, uBlas::column_major, 0, uBlas::unbounded_array<int>, uBlas::unbounded_array<double> > SparseMatrix;
-  #endif //RUNTIME_STATIC_LINKING
-  */
   //Forward declaration to speed-up the compilation process
   class Functions;
   class EventHandling;
@@ -6134,7 +6206,6 @@ match modelInfo
   <<
   <%if boolNot(stringEq(getConfigString(PROFILING_LEVEL),"none")) then
   <<
-  #define MEASURETIME_PROFILEBLOCKS
   #define MEASURETIME_MODELFUNCTIONS
   >>%>
 
@@ -10260,7 +10331,7 @@ template algloopMainfile(list<SimEqSystem> allEquations, SimCode simCode ,Text& 
     * This file is generated by the OpenModelica Compiler and produced to speed-up the compile time.
     *
     *****************************************************************************/
-    #include "System/AlgLoopDefaultImplementation.h"
+    #include <Core/System/AlgLoopDefaultImplementation.h>
     //jac files
     <%jacfiles%>
     //alg loop files
@@ -10382,16 +10453,17 @@ case eqn as SES_ARRAY_CALL_ASSIGN(lhs=lhs as CREF(__)) then
     ;separator=" || ")C*/, &varDecls /*BUFD*/,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, stateDerVectorName, useFlatArrayNotation)
   match expTypeFromExpShort(eqn.exp)
   case "boolean" then
-    let tvar = tempDecl("boolean_array", &varDecls /*BUFD*/)
-    //let &preExp += 'cast_integer_array_to_real(&<%expPart%>, &<%tvar%>);<%\n%>'
+
+
     <<
     <%preExp%>
     <%cref1(lhs.componentRef,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, context, varDeclsCref, stateDerVectorName, useFlatArrayNotation)%>=<%expPart%>;
     >>
   case "int" then
-    let tvar = tempDecl("integer_array", &varDecls /*BUFD*/)
+
     <<
     <%preExp%>
+
     <%cref1(lhs.componentRef,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace, context, varDeclsCref, stateDerVectorName, useFlatArrayNotation)%>=<%expPart%>;
     >>
   case "double" then
@@ -13986,17 +14058,12 @@ end equationFunctions;
 
 template createEvaluateAll( list<SimEqSystem> allEquationsPlusWhen,list<SimWhenClause> whenClauses, SimCode simCode ,Text& extraFuncs,Text& extraFuncsDecl,Text extraFuncsNamespace, Context context, Text stateDerVectorName /*=__zDot*/, Boolean useFlatArrayNotation, Boolean createMeasureTime)
 ::=
-  let className = lastIdentOfPathFromSimCode(simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace)
   let &varDecls = buffer "" /*BUFD*/
+  let className = lastIdentOfPathFromSimCode(simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace)
 
-  let &eqfuncs = buffer ""
-  let equation_all_func_calls = (allEquationsPlusWhen |> eq  =>
-                    equation_function_call(eq,  context, &varDecls /*BUFC*/, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace,"evaluate")
-                    ;separator="\n")
-
-  let equation_notOde_func_calls = (SimCodeUtil.getDaeEqsNotPartOfOdeSystem(simCode ) |> eq =>
-                    equation_function_call(eq,  context, &varDecls /*BUFC*/, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace,"evaluate")
-                    ;separator="\n")
+  let equation_all_func_calls = (List.partition(allEquationsPlusWhen, 100) |> eqs hasindex i0 =>
+                                 createEvaluateWithSplit(i0, context, eqs, "evaluateAll", className, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace)
+                                 ;separator="\n")
 
   let reinit = (whenClauses |> when hasindex i0 =>
          genreinits(when, &varDecls,i0,simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace,context, stateDerVectorName, useFlatArrayNotation)
@@ -14005,21 +14072,16 @@ template createEvaluateAll( list<SimEqSystem> allEquationsPlusWhen,list<SimWhenC
   <<
   bool <%className%>::evaluateAll(const UPDATETYPE command)
   {
-    <%if createMeasureTime then generateMeasureTimeStartCode("measuredFunctionStartValues", "evaluateAll_wo_ODE", "MEASURETIME_MODELFUNCTIONS") else ""%>
+    <%if createMeasureTime then generateMeasureTimeStartCode("measuredFunctionStartValues", "evaluateAll", "MEASURETIME_MODELFUNCTIONS") else ""%>
     bool state_var_reinitialized = false;
 
     <%varDecls%>
     /* Evaluate Equations*/
     <%equation_all_func_calls%>
-
-    /* evaluateODE(command);
-
-    <%equation_notOde_func_calls%>
-    */
     // Reinits
     <%reinit%>
 
-    <%if createMeasureTime then generateMeasureTimeEndCode("measuredFunctionStartValues", "measuredFunctionEndValues", "measureTimeFunctionsArray[1]", "evaluateAll_wo_ODE", "MEASURETIME_MODELFUNCTIONS") else ""%>
+    <%if createMeasureTime then generateMeasureTimeEndCode("measuredFunctionStartValues", "measuredFunctionEndValues", "measureTimeFunctionsArray[1]", "evaluateAll", "MEASURETIME_MODELFUNCTIONS") else ""%>
     return state_var_reinitialized;
   }
   >>
@@ -14053,9 +14115,9 @@ template createEvaluate(list<list<SimEqSystem>> odeEquations,list<SimWhenClause>
   let className = lastIdentOfPathFromSimCode(simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace)
   let &varDecls = buffer "" /*BUFD*/
 
-  let equation_ode_func_calls = (odeEquations |> eqs => (eqs |> eq  =>
-                    equation_function_call(eq, context, &varDecls /*BUFC*/, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace,"evaluate");separator="\n")
-                   )
+  let equation_ode_func_calls = (List.partition(List.flatten(odeEquations), 100) |> eqs hasindex i0 =>
+                                 createEvaluateWithSplit(i0, context, eqs, "evaluateODE", className, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace)
+                                 ;separator="\n")
   <<
   void <%className%>::evaluateODE(const UPDATETYPE command)
   {
@@ -14074,8 +14136,8 @@ template createEvaluateZeroFuncs( list<SimEqSystem> equationsForZeroCrossings, S
   let &varDecls = buffer "" /*BUFD*/
 
   let &eqfuncs = buffer ""
-  let equation_zero_func_calls = (equationsForZeroCrossings |> eq  =>
-                    equation_function_call(eq,  context, &varDecls /*BUFC*/, simCode , &extraFuncs , &extraFuncsDecl,  extraFuncsNamespace,"evaluate")
+  let equation_zero_func_calls = (List.partition(equationsForZeroCrossings, 100) |> eqs hasindex i0 =>
+                    createEvaluateWithSplit(i0, context, eqs, "evaluateZeroFuncs", className, simCode, &extraFuncs , &extraFuncsDecl, extraFuncsNamespace)
                     ;separator="\n")
 
   <<
@@ -14087,6 +14149,29 @@ template createEvaluateZeroFuncs( list<SimEqSystem> equationsForZeroCrossings, S
   }
   >>
 end createEvaluateZeroFuncs;
+
+template createEvaluateWithSplit(Integer sectionIndex, Context context, list<SimEqSystem> sectionEquations, String functionName, String className, SimCode simCode ,Text& extraFuncs,Text& extraFuncsDecl,Text extraFuncsNamespace)
+::=
+  let &varDecls = buffer "" /*BUFD*/
+  let equation_func_calls = (sectionEquations |> eq  =>
+                    equation_function_call(eq, context, &varDecls /*BUFC*/, simCode, &extraFuncs, &extraFuncsDecl, extraFuncsNamespace, "evaluate")
+                    ;separator="\n")
+  let &extraFuncs +=
+  <<
+  <%\n%>void <%className%>::<%functionName%>_<%sectionIndex%>(const UPDATETYPE command)
+  {
+    <%varDecls%>
+    <%equation_func_calls%>
+  }
+  >>
+  let &extraFuncsDecl +=
+  <<
+  void <%functionName%>_<%sectionIndex%>(const UPDATETYPE command);<%\n%>
+  >>
+  <<
+  <%functionName%>_<%sectionIndex%>(command);
+  >>
+end createEvaluateWithSplit;
 
 /*
  //! Evaluates only the equations whose indexs are passed to it.
@@ -14912,7 +14997,7 @@ template algStmtReinit(DAE.Statement stmt, Context context, Text &varDecls /*BUF
     >>
     */
     <<
-    _discrete_events->save(<%expPart1%>,"<%expPart1%>");
+    _discrete_events->save(<%expPart1%>);
      <%preExp%>
     <%expPart1%> = <%expPart2%>;
     >>

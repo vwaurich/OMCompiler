@@ -642,30 +642,6 @@ function cat "Concatenate arrays along given dimension"
 </html>"));
 end cat;
 
-function rooted "Not yet standard Modelica, but in the MSL since 3-4 years now."
-  external "builtin";
-  annotation(Documentation(info="<html>
-<p><b>Not yet standard Modelica, but in the MSL since 3-4 years now.</b></p>
-<h4>Syntax</h4>
-<blockquote>
-<pre><b>rooted</b>(x)</pre>
-</blockquote>
-<h4>Description</h4>
-<p>The operator \"rooted\" was introduced to improve efficiency:
-A tool that constructs the graph with the Connections.branch/.root etc.
-built-in operators has to cut the graph in order to arrive at \"spanning trees\".
-If there is a statement \"Connections.branch(A,B)\", then \"rooted(A)\" returns true,
-if \"A\" is closer to the root of the spanning tree as \"B\". Otherwise false is returned.
-For the MultiBody library this allows to avoid unnecessary small linear systems of equations.
-</p>
-<h4>Known Bugs</h4>
-<p>
-OpenModelica, <b>rooted</b>(x) always returns true.
-See <a href=\"https://trac.modelica.org/Modelica/ticket/95\">rooted ticket in the Modelica Trac</a> for details.
-</p>
-</html>"),version="Deprecated in the upcoming Modelica 3.2 rev2");
-end rooted;
-
 function actualStream
   external "builtin";
 end actualStream;
@@ -731,6 +707,29 @@ encapsulated package Connections
     // adrpo: I would like an assert here: size(nodes) <= size (roots)
     external "builtin";
   end uniqueRootIndices;
+
+  function rooted
+    external "builtin";
+    annotation(Documentation(info="<html>
+  <h4>Syntax</h4>
+  <blockquote>
+  <pre><b>Connections.rooted</b>(x)</pre>
+  </blockquote>
+  <h4>Description</h4>
+  <p>The operator \"rooted\" was introduced to improve efficiency:
+  A tool that constructs the graph with the Connections.branch/.root etc.
+  built-in operators has to cut the graph in order to arrive at \"spanning trees\".
+  If there is a statement \"Connections.branch(A,B)\", then \"rooted(A)\" returns true,
+  if \"A\" is closer to the root of the spanning tree as \"B\". Otherwise false is returned.
+  For the MultiBody library this allows to avoid unnecessary small linear systems of equations.
+  </p>
+  <h4>Known Bugs</h4>
+  <p>
+  OpenModelica, <b>rooted</b>(x) always returns true.
+  See <a href=\"https://trac.modelica.org/Modelica/ticket/95\">rooted ticket in the Modelica Trac</a> for details.
+  </p>
+  </html>"));
+  end rooted;
 end Connections;
 
 encapsulated package Subtask
@@ -1365,7 +1364,7 @@ function getModelicaPath "Get the Modelica Library Path."
 external "builtin";
 annotation(Documentation(info="<html>
 <p>The MODELICAPATH is list of paths to search when trying to  <a href=\"modelica://OpenModelica.Scripting.loadModel\">load a library</a>. It is a string separated by colon (:) on all OSes except Windows, which uses semicolon (;).</p>
-<p>To override the default path (<a href=\"modelica://OpenModelica.Scripting.getModelicaPath\">getModelicaPath()</a>/lib/omlibrary/:~/.openmodelica/libraries/), set the environment variable OPENMODELICALIBRARY=...</p>
+<p>To override the default path (<a href=\"modelica://OpenModelica.Scripting.getInstallationDirectoryPath\">OPENMODELICAHOME</a>/lib/omlibrary/:~/.openmodelica/libraries/), set the environment variable OPENMODELICALIBRARY=...</p>
 </html>"),
   preferredView="text");
 end getModelicaPath;
@@ -2043,8 +2042,30 @@ function strtok "Splits the strings at the places given by the token, for exampl
   input String token;
   output String[:] strings;
 external "builtin";
-annotation(preferredView="text");
+annotation(Documentatrion(info="<html>
+<p>Splits the strings at the places given by the token, for example:
+<ul>
+<li>strtok(\"abcbdef\",\"b\") => {\"a\",\"c\",\"def\"}</li>
+<li>strtok(\"abcbdef\",\"cd\") => {\"ab\",\"ef\"}</li>
+</ul>
+</p>
+<p>Note: strtok does not return empty tokens. To split a read file into every line, use <a href=\"modelica://OpenModelica.Scripting.stringSplit\">stringSplit</a> instead (splits only on character).</p>
+</html>"),preferredView="text");
 end strtok;
+
+function stringSplit "Splits the string at the places given by the character"
+  input String string;
+  input String token "single character only";
+  output String[:] strings;
+external "builtin";
+annotation(Documentatrion(info="<html>
+<p>Splits the string at the places given by the character, for example:
+<ul>
+<li>stringSplit(\"abcbdef\",\"b\") => {\"a\",\"c\",\"def\"}</li>
+</ul>
+</p>
+</html>"),preferredView="text");
+end stringSplit;
 
 public function stringReplace
   input String str;
@@ -2100,6 +2121,22 @@ empty string is returned.</p>
 </html>"),
   preferredView="text");
 end list;
+
+function listFile "Lists the contents of the file given by the class."
+  input TypeName class_;
+  output String contents;
+external "builtin";
+annotation(Documentation(info="<html>
+<p>Lists the contents of the file given by the class.
+See also <a href=\"modelica://OpenModelica.Scripting.list\">list()</a>.</p>
+</html>",revisions="<html>
+<table>
+<tr><th>Revision</th><th>Author</th><th>Comment</th></tr>
+<tr><td>1.9.3-dev</td><td>sjoelund.se</td><td>Introduced the API.</td></tr>
+</table>
+</html>"),
+  preferredView="text");
+end listFile;
 
 // exportToFigaro added by Alexander Carlqvist
 function exportToFigaro
@@ -2541,22 +2578,6 @@ function plotAll "Works in the same way as plot(), but does not accept any
 external "builtin";
 annotation(preferredView="text");
 end plotAll;
-
-function visualize "Uses the 3D visualization package, SimpleVisual.mo, to
-  visualize the model. See chapter 3.4 (3D Animation) of the OpenModelica
-  System Documentation for more details.
-  Writes the visulizations objects into the file \"model_name.visualize\"
-
-  Example command sequence:
-  simulate(A,outputFormat=\"mat\");visualize(A);visualize(A,fileName=\"B.mat\");visualize(A,fileName=\"B.mat\", true);
-  "
-  input TypeName className;
-  input Boolean externalWindow = false "Opens the visualize in a new window";
-  input String fileName = "<default>" "The filename containing the variables. <default> will read the last simulation result";
-  output Boolean success "Returns true on success";
-  external "builtin";
-annotation(preferredView="text");
-end visualize;
 
 function plotParametric "Launches a plotParametric window using OMPlot. Returns true on success.
 

@@ -44,6 +44,7 @@ public import SCode;
 public import Values;
 public import HashTable3;
 public import HashTableCG;
+public import MMath;
 
 public
 type Type = .DAE.Type
@@ -74,30 +75,32 @@ uniontype EqSystem "An independent system of equations (and their corresponding 
     Option<IncidenceMatrix> m;
     Option<IncidenceMatrixT> mT;
     Matching matching;
-    StateSets stateSets "the statesets of the system";
+    StateSets stateSets "the state sets of the system";
     BaseClockPartitionKind partitionKind;
   end EQSYSTEM;
 end EqSystem;
+
+public uniontype SubClock
+  record SUBCLOCK
+    MMath.Rational factor;
+    MMath.Rational shift;
+    Option<String> solver;
+  end SUBCLOCK;
+end SubClock;
 
 public
 uniontype BaseClockPartitionKind
   record UNKNOWN_PARTITION end UNKNOWN_PARTITION;
   record CLOCKED_PARTITION
-    .DAE.ClockKind clockKind;
-    // array<SubClockPartitions> subClockPartitions;
+    Integer baseClock;
+    SubClock subClock;
+    Boolean holdEvents;
   end CLOCKED_PARTITION;
   record CONTINUOUS_TIME_PARTITION end CONTINUOUS_TIME_PARTITION;
   record UNSPECIFIED_PARTITION "treated as CONTINUOUS_TIME_PARTITION" end UNSPECIFIED_PARTITION;
 end BaseClockPartitionKind;
 
-public
-uniontype SubClockPartition
-  record SubClockPartition
-    Integer factor "subSample/superSample";
-    //Integer counter "shiftSample/backSample";
-    //Integer resolution "shiftSample/backSample";
-  end SubClockPartition;
-end SubClockPartition;
+
 
 public
 uniontype Shared "Data shared for all equation-systems"
@@ -110,7 +113,7 @@ uniontype Shared "Data shared for all equation-systems"
                                              In that way, double buffering of variables in pre()-buffer, extrapolation
                                              buffer and results caching, etc., is avoided, but in C-code output all the
                                              data about variables' names, comments, units, etc. is preserved as well as
-                                             pinter to their values (trajectories).";
+                                             pointer to their values (trajectories).";
     EquationArray initialEqs                "Initial equations";
     EquationArray removedEqs                "these are equations that cannot solve for a variable. for example assertions, external function calls, algorithm sections without effect";
     list< .DAE.Constraint> constraints     "constraints (Optimica extension)";
@@ -139,7 +142,7 @@ uniontype BackendDAEType "BackendDAEType to indicate different types of BackendD
   record SIMULATION      "Type for the normal BackendDAE.DAE for simulation" end SIMULATION;
   record JACOBIAN        "Type for Jacobian BackendDAE.DAE"                  end JACOBIAN;
   record ALGEQSYSTEM     "Type for algebraic loop BackendDAE.DAE"            end ALGEQSYSTEM;
-  record ARRAYSYSTEM     "Type for multidim equation arrays BackendDAE.DAE"  end ARRAYSYSTEM;
+  record ARRAYSYSTEM     "Type for multi dim equation arrays BackendDAE.DAE" end ARRAYSYSTEM;
   record PARAMETERSYSTEM "Type for parameter system BackendDAE.DAE"          end PARAMETERSYSTEM;
   record INITIALSYSTEM   "Type for initial system BackendDAE.DAE"            end INITIALSYSTEM;
 end BackendDAEType;
@@ -244,26 +247,33 @@ public uniontype TearingSelect
   record ALWAYS end ALWAYS;
 end TearingSelect;
 
+public constant String WHENCLK_PRREFIX = "$whenclk";
 public uniontype EquationKind "equation kind"
-  record BINDING_EQUATION end BINDING_EQUATION;
-  record DYNAMIC_EQUATION end DYNAMIC_EQUATION;
-  record INITIAL_EQUATION end INITIAL_EQUATION;
-  record UNKNOWN_EQUATION_KIND end UNKNOWN_EQUATION_KIND;
+  record BINDING_EQUATION
+  end BINDING_EQUATION;
+  record DYNAMIC_EQUATION
+  end DYNAMIC_EQUATION;
+  record INITIAL_EQUATION
+  end INITIAL_EQUATION;
+  record CLOCKED_EQUATION
+    Integer clk;
+  end CLOCKED_EQUATION;
+  record UNKNOWN_EQUATION_KIND
+  end UNKNOWN_EQUATION_KIND;
 end EquationKind;
 
 public uniontype EquationAttributes
   record EQUATION_ATTRIBUTES
     Boolean differentiated "true if the equation was differentiated, and should not differentiated again to avoid equal equations";
     EquationKind kind;
-    Integer subPartitionIndex;
     LoopInfo loopInfo;
   end EQUATION_ATTRIBUTES;
 end EquationAttributes;
 
-public constant EquationAttributes EQ_ATTR_DEFAULT_DYNAMIC = EQUATION_ATTRIBUTES(false, DYNAMIC_EQUATION(), 0, NO_LOOP());
-public constant EquationAttributes EQ_ATTR_DEFAULT_BINDING = EQUATION_ATTRIBUTES(false, BINDING_EQUATION(), 0, NO_LOOP());
-public constant EquationAttributes EQ_ATTR_DEFAULT_INITIAL = EQUATION_ATTRIBUTES(false, INITIAL_EQUATION(), 0, NO_LOOP());
-public constant EquationAttributes EQ_ATTR_DEFAULT_UNKNOWN = EQUATION_ATTRIBUTES(false, UNKNOWN_EQUATION_KIND(), 0, NO_LOOP());
+public constant EquationAttributes EQ_ATTR_DEFAULT_DYNAMIC = EQUATION_ATTRIBUTES(false, DYNAMIC_EQUATION(), NO_LOOP());
+public constant EquationAttributes EQ_ATTR_DEFAULT_BINDING = EQUATION_ATTRIBUTES(false, BINDING_EQUATION(), NO_LOOP());
+public constant EquationAttributes EQ_ATTR_DEFAULT_INITIAL = EQUATION_ATTRIBUTES(false, INITIAL_EQUATION(), NO_LOOP());
+public constant EquationAttributes EQ_ATTR_DEFAULT_UNKNOWN = EQUATION_ATTRIBUTES(false, UNKNOWN_EQUATION_KIND(), NO_LOOP());
 
 public uniontype LoopInfo "is this equation part of a for-loop"
   record NO_LOOP
@@ -278,7 +288,7 @@ public uniontype LoopInfo "is this equation part of a for-loop"
   end LOOP;
 end LoopInfo;
 
-public uniontype IterCref "which crefs occure in the for-loop and what are their iterated indexes"
+public uniontype IterCref "which crefs occur in the for-loop and what are their iterated indexes"
   record ITER_CREF
     .DAE.ComponentRef cref;
     .DAE.Exp iterator;
@@ -359,7 +369,7 @@ uniontype Equation
     .DAE.ElementSource source "origin of equation";
     EquationAttributes attr;
   end FOR_EQUATION;
-  
+
 end Equation;
 
 public
@@ -447,7 +457,7 @@ uniontype StrongComponent
     list<Integer> vars "be careful with states, this are solved for der(x)";
     Jacobian jac;
     JacobianType jacType;
-    Boolean mixedSystem "true for system that discrete dependecies to the iteration variables";
+    Boolean mixedSystem "true for system that discrete dependencies to the iteration variables";
   end EQUATIONSYSTEM;
 
   record SINGLEARRAY
@@ -479,7 +489,7 @@ uniontype StrongComponent
     TearingSet strictTearingSet;
     Option<TearingSet> casualTearingSet;
     Boolean linear;
-    Boolean mixedSystem "true for system that discrete dependecies to the iteration variables";
+    Boolean mixedSystem "true for system that discrete dependencies to the iteration variables";
   end TORNSYSTEM;
 end StrongComponent;
 
@@ -526,6 +536,7 @@ uniontype EventInfo
     list<ZeroCrossing> sampleLst       "[deprecated] list of sample as before, only used by cpp runtime (TODO: REMOVE ME)";
     list<ZeroCrossing> relationsLst    "list of zero crossing function as before";
     Integer numberMathEvents           "stores the number of math function that trigger events e.g. floor, ceil, integer, ...";
+    array<.DAE.ClockKind> clocks;
   end EVENT_INFO;
 end EventInfo;
 
@@ -645,8 +656,8 @@ uniontype IndexType
   record ABSOLUTE "incidence matrix with absolute indexes" end ABSOLUTE;
   record NORMAL "incidence matrix with positive/negative indexes" end NORMAL;
   record SOLVABLE "incidence matrix with only solvable entries, for example {a,b,c}[d] then d is skipped" end SOLVABLE;
-  record BASECLOCK "incidence matrix for base-clock partitioning" end BASECLOCK;
-  record SUBCLOCK "incidence matrix for sub-clock partitioning" end SUBCLOCK;
+  record BASECLOCK_IDX "incidence matrix for base-clock partitioning" end BASECLOCK_IDX;
+  record SUBCLOCK_IDX "incidence matrix for sub-clock partitioning" end SUBCLOCK_IDX;
   record SPARSE "incidence matrix as normal, but add for inputs also a value" end SPARSE;
 end IndexType;
 
@@ -730,7 +741,7 @@ uniontype DifferentiateInputData
     Option<Variables> allVars;                    // all variables
     Option<list< Var>> controlVars;               // variables to save control vars of for algorithm
     Option<list< .DAE.ComponentRef>> diffCrefs;   // all crefs to differentiate, needed for generic gradient
-    Option<String> matrixName;                    // name to create tempory vars, needed for generic gradient
+    Option<String> matrixName;                    // name to create temporary vars, needed for generic gradient
   end DIFFINPUTDATA;
 end DifferentiateInputData;
 

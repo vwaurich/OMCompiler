@@ -508,6 +508,18 @@ algorithm
   outList := listAppend(listAppend(lst1,{inElement}),lst2);
 end set;
 
+public function first<T>
+  "Returns the first element of a list. Fails if the list is empty."
+  input list<T> inList;
+  output T out;
+algorithm
+  out := match(inList)
+    local
+      T e;
+    case e :: _ then e;
+  end match;
+end first;
+
 public function firstOrEmpty<T>
   "Returns the first element of a list as a list, or an empty list if the given
    list is empty."
@@ -1613,7 +1625,7 @@ end setDifferenceOnTrue;
 public function setDifference<T>
   "Takes two lists and returns the set difference of two lists A - B.
      Example:
-       setDifferenceOnTrue({1, 2, 3}, {1, 3}, intEq) => {2}"
+       setDifference({1, 2, 3}, {1, 3}) => {2}"
   input list<T> inList1;
   input list<T> inList2;
   output list<T> outDifference = inList1;
