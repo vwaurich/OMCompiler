@@ -95,7 +95,7 @@ public function lower "This function translates a DAE, which is the result from 
   input BackendDAE.ExtraInfo inExtraInfo;
   output BackendDAE.BackendDAE outBackendDAE;
 protected
-  list<BackendDAE.Var> varlst, knvarlst, extvarlst;
+  list<BackendDAE.Var> varlst, knvarlst, knvarlst1, extvarlst, aliasvarLst;
   BackendDAE.Variables vars, knvars, vars_1, extVars, aliasVars;
   list<BackendDAE.Equation> eqns, reqns, ieqns, algeqns, algeqns1, ialgeqns, multidimeqns, imultidimeqns, eqns_1, ceeqns, iceeqns;
   list<DAE.Constraint> constrs;
@@ -118,14 +118,19 @@ algorithm
   (DAE.DAE(elems), functionTree, timeEvents) := processBuiltinExpressions(lst, functionTree);
   (varlst, knvarlst, extvarlst, eqns, reqns, ieqns, constrs, clsAttrs, whenclauses, extObjCls, aliaseqns, _) :=
     lower2(listReverse(elems), functionTree, HashTableExpToExp.emptyHashTable());
+
+  if Flags.isSet(Flags.VECTORIZE) then
+    (varlst,knvarlst1,aliasvarLst,eqns) := Vectorization.buildForLoops(varlst,eqns);
+    knvarlst := listAppend(knvarlst,knvarlst1);
+  else
+    aliasvarLst := {};
+  end if;
+
   vars := BackendVariable.listVar(varlst);
   knvars := BackendVariable.listVar(knvarlst);
   extVars := BackendVariable.listVar(extvarlst);
   whenclauses_1 := listReverse(whenclauses);
-  aliasVars := BackendVariable.emptyVars();
-  if Flags.isSet(Flags.VECTORIZE) then
-    (vars,eqns) := Vectorization.buildForLoops(vars,eqns);
-  end if;
+  aliasVars := BackendVariable.listVar(aliasvarLst);
   // handle alias equations
   (vars, knvars, extVars, aliasVars, eqns, reqns, ieqns, whenclauses_1) := handleAliasEquations(aliaseqns, vars, knvars, extVars, aliasVars, eqns, reqns, ieqns, whenclauses_1);
   vars_1 := detectImplicitDiscrete(vars, knvars, eqns);

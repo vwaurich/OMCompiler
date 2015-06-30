@@ -1795,6 +1795,7 @@ algorithm
     case BackendDAE.ALGORITHM(source=source) then source;
     case BackendDAE.COMPLEX_EQUATION(source=source) then source;
     case BackendDAE.IF_EQUATION(source=source) then source;
+    case BackendDAE.FOR_EQUATION(source=source) then source;
     else
       equation Error.addInternalError("BackendEquation.equationSource failed!", sourceInfo());
       then fail();
