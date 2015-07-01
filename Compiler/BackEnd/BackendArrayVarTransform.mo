@@ -714,12 +714,17 @@ algorithm
   (eOut,tplOut) := matchcontinue(eIn,tplIn)
     local
       DAE.ComponentRef cref;
-      DAE.Exp iter,range;
+      DAE.Exp iter, range, exp;
+      DAE.Operator op;
       DAE.Type ty;
   case(DAE.CREF(componentRef=cref, ty=ty),(iter,range))
     equation
       cref = replaceIteratorWithRangeInCref(cref,iter,range);
     then (DAE.CREF(cref,ty),tplIn);
+  case(DAE.UNARY(operator=op,exp=exp),(iter,range))
+    equation
+      (exp,_) = replaceIteratorWithRangeInCrefInExp(exp,(iter,range));
+    then (exp,tplIn);
   else
     then (eIn,tplIn);
   end matchcontinue;

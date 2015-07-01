@@ -94,7 +94,6 @@ protected
 algorithm
   try
     BackendDAE.EQSYSTEM(vars, eqs, SOME(_), SOME(mt), BackendDAE.MATCHING(ass1=ass1, ass2=ass2), stateSets=stateSets, partitionKind=partitionKind) := inSystem;
-
     comps := Sorting.TarjanTransposed(mt, ass2);
 
     markarray := arrayCreate(BackendDAEUtil.equationArraySize(eqs), -1);
@@ -626,7 +625,7 @@ public function traverseBackendDAEExpsEqnWithSymbolicOperation
 algorithm
   (outEquation, outTypeA) := matchcontinue (inEquation)
     local
-      DAE.Exp e1_1, e2_1, e1, e2, cond;
+      DAE.Exp e1_1, e2_1, e1, e2, iter, start, stop, cond;
       DAE.ComponentRef cr, cr1;
       Integer size;
       list<DAE.Exp> expl;
@@ -703,6 +702,12 @@ algorithm
       (eqnslst, ext_arg_1) = traverseBackendDAEExpsEqnLstLstWithSymbolicOperation(eqnslst, func, ext_arg_1, {});
       (eqns, ext_arg_1) = traverseBackendDAEExpsEqnLstWithSymbolicOperation(eqns, func, ext_arg_1, {});
     then (BackendDAE.IF_EQUATION(expl, eqnslst, eqns, source, eqAttr), ext_arg_1);
+
+    case BackendDAE.FOR_EQUATION(iter=iter,start=start,stop=stop,left=e1,right=e2, source=source, attr=eqAttr) equation
+      (e1_1, (ops, ext_arg_1)) = func(e1, ({}, inTypeA));
+      (e2_1, (ops, ext_arg_2)) = func(e2, (ops, ext_arg_1));
+      source = List.foldr(ops, DAEUtil.addSymbolicTransformation, source);
+    then (BackendDAE.FOR_EQUATION(iter, start, stop, e1_1, e2_1, source, eqAttr), ext_arg_2);
 
     else equation
       Error.addInternalError("function traverseBackendDAEExpsEqnWithSymbolicOperation failed", sourceInfo());

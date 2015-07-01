@@ -203,7 +203,7 @@ match cref
     '<%ident%><%sub_str%>'
   case CREF_ITER(__) then
     let sub_str = dumpSubscripts(subscriptLst)
-    '<%ident%><%sub_str%> /* iter index <%index%> */'
+    '<%ident%><%sub_str%>'// /* iter index <%index%> */'
   case CREF_QUAL(__) then
     let sub_str = dumpSubscripts(subscriptLst)
     let cref_str = dumpCref(componentRef)

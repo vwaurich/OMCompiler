@@ -3029,8 +3029,9 @@ algorithm
       list<Integer> p,pa,res;
       DAE.ComponentRef cr;
       BackendDAE.Variables vars;
-      DAE.Exp e,e1,e2;
+      DAE.Exp e,e1,e2,iter;
       list<BackendDAE.Var> varslst;
+      list<DAE.ComponentRef> crefs;
       Boolean b;
       Integer i;
       String str;
@@ -3083,6 +3084,18 @@ algorithm
         e1 = Expression.nthArrayExp(e1, i);
         (_, (_, res)) = Expression.traverseExpTopDown(e1, traversingincidenceRowExpFinder, (vars, pa));
       then (inExp, false, (vars, res));
+
+    case (DAE.SUM(iterator=iter,startIt=e1,endIt=e2,body=e),(vars,pa))
+      algorithm
+        crefs := Expression.getAllCrefs(e);
+        crefs := List.map2(crefs,BackendArrayVarTransform.replaceIteratorWithRangeInCref,iter,DAE.RANGE(Expression.typeof(e1),e1,NONE(),e2));
+        for cref in crefs loop
+          if BackendVariable.existsVar(cref,vars,false) then
+            (varslst, p) := BackendVariable.getVar(cref,vars);
+            pa := listAppend(p,pa);
+          end if;
+        end for;
+      then (inExp, false, (vars, pa));
 
     case (DAE.ASUB(),(_,_))
       then fail();
@@ -6897,14 +6910,23 @@ protected
 algorithm
   BackendDAE.DAE(systs,shared) := inDAE;
   // reduce index
+  print("test1\n");
   (systs,shared,args,causalized) := mapCausalizeDAE(systs,shared,inMatchingOptions,matchingAlgorithm,stateDeselection,{},{},false);
+    print("test2\n");
+
   //SimCodeUtil.execStat("matching");
   // do late inline
   outDAE := if dolateinline then BackendInline.lateInlineFunction(BackendDAE.DAE(systs,shared)) else BackendDAE.DAE(systs,shared);
   // do state selection
+    print("test3\n");
+
   BackendDAE.DAE(systs,shared) := stateDeselectionDAE(causalized,outDAE,args,stateDeselection);
+    print("test4\n");
+
   // sort assigned equations to blt form
   systs := mapSortEqnsDAE(systs,shared,{});
+    print("test5\n");
+
   outDAE := BackendDAE.DAE(systs,shared);
   //SimCodeUtil.execStat("sorting");
 end causalizeDAE;
@@ -6980,16 +7002,30 @@ algorithm
     case (BackendDAE.EQSYSTEM(matching=BackendDAE.NO_MATCHING()),_,_,(matchingAlgorithmfunc,_),(sssHandler,_,_,_),_)
       equation
         funcs = getFunctions(ishared);
-        (syst,_,_,mapEqnIncRow,mapIncRowEqn) = getIncidenceMatrixScalar(isyst,BackendDAE.SOLVABLE(), SOME(funcs));
+        //(syst,_,_,mapEqnIncRow,mapIncRowEqn) = getIncidenceMatrixScalar(isyst,BackendDAE.SOLVABLE(), SOME(funcs));
+        (syst,_,_) = getIncidenceMatrix(isyst,BackendDAE.SOLVABLE(), SOME(funcs));
+                BackendDump.dumpEqSystem(syst,"CAUSALIZE");
+        mapEqnIncRow = listArray(List.map(List.intRange(19),List.create));
+        mapIncRowEqn = listArray(List.intRange(19));
+
+        print("hoho1\n");
         match_opts = Util.getOptionOrDefault(inMatchingOptions,(BackendDAE.INDEX_REDUCTION(), BackendDAE.EXACT()));
         arg = IndexReduction.getStructurallySingularSystemHandlerArg(syst,ishared,mapEqnIncRow,mapIncRowEqn);
+                print("hoho2\n");
+
         // check singular system
         nvars = BackendVariable.daenumScalarVariables(syst);
         neqns = systemSize(syst);
-        syst = Causalize.singularSystemCheck(nvars,neqns,syst,match_opts,matchingAlgorithm,arg,ishared);
+                print("hoho3\n");
+
+        //syst = Causalize.singularSystemCheck(nvars,neqns,syst,match_opts,matchingAlgorithm,arg,ishared);
+                print("hoho4\n");
+
         // SimCodeUtil.execStat("transformDAE -> singularSystemCheck " + mAmethodstr);
         // match the system and reduce index if neccessary
         (syst,shared,arg) = matchingAlgorithmfunc(syst, ishared, false, match_opts, sssHandler, arg);
+                print("hoho5\n");
+
         // SimCodeUtil.execStat("transformDAE -> matchingAlgorithm " + mAmethodstr + " index Reduction Method " + str1);
       then (syst,shared,SOME(arg),true);
 

@@ -997,8 +997,14 @@ algorithm
           cref2 = ComponentReference.crefStripSubs(src);
           crefs = BaseHashTable.get(cref2,arrHt);
           dst = findAccordingCref(src,crefs,inVariableReplacements);
+          if Expression.isCref(dst) and ComponentReference.crefHaveSubs(Expression.expCref(dst)) and hasReplacement(inVariableReplacements,Expression.expCref(dst)) then
+            dst = getReplacement(inVariableReplacements,Expression.expCref(dst));
+          end if;
         else
           dst = BaseHashTable.get(src,ht);
+          if Expression.isCref(dst) and ComponentReference.crefHaveSubs(Expression.expCref(dst)) and hasReplacement(inVariableReplacements,Expression.expCref(dst)) then
+            dst = getReplacement(inVariableReplacements,Expression.expCref(dst));
+          end if;
         end if;
       then
         dst;

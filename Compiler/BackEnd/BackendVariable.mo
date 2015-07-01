@@ -3231,7 +3231,7 @@ algorithm
             for indx in List.intRange(varsSize(inVariables)) loop
               v := getVarAt(inVariables,indx);
               //print("check var: "+BackendDump.varString(v)+"\n");
-              if Vectorization.crefFitsInVar(v,cr) then
+              if Vectorization.crefFitsInVar(v,cr) or Vectorization.varFitsInCref(v,cr) then
                 //print("HIT!!!!!\n");
                 indxs := indx::indxs;
                 vLst := v::vLst;
