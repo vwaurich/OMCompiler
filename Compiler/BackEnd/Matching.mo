@@ -5581,33 +5581,19 @@ algorithm
         (ass1,ass2,isyst,ishared,inArg);
     case ({},false,_,_,_,BackendDAE.EQSYSTEM(m=SOME(m),mT=SOME(mt)),_,_,_,_,_,_,_,_)
       equation
-                  print("jojojo0\n");
-        print("nv "+intString(nv)+ " ne "+intString(ne)+"\n");
         matchingExternalsetIncidenceMatrix(nv,ne,m);
-          print("jojojo1\n");
         BackendDAEEXT.matching(nv,ne,algIndx,cheapMatching,1.0,clearMatching);
-                  print("jojojo2\n");
         BackendDAEEXT.getAssignment(ass1,ass2);
-                  print("jojojo3\n");
         unmatched1 = getUnassigned(ne, ass1, {});
-                  print("jojojo4\n");
         meqns1 = getEqnsforIndexReduction(unmatched1,ne,m,mt,ass1,ass2,inArg);
-                  print("jojojo5\n");
         (ass1_1,ass2_1,syst,shared,arg) = matchingExternal(meqns1,true,algIndx,-1,0,isyst,ishared,nv,ne,ass1,ass2,inMatchingOptions,sssHandler,inArg);
       then
         (ass1_1,ass2_1,syst,shared,arg);
     case (_::_,_,_,_,_,_,_,_,_,_,_,(BackendDAE.INDEX_REDUCTION(),_),_,_)
       equation
-        print("kook1\n");
         memsize = arrayLength(ass1);
-                print("kook2\n");
-
         (_,_,syst,shared,ass2_1,ass1_1,arg) = sssHandler(meqns,0,isyst,ishared,ass2,ass1,inArg);
-                print("kook3\n");
-
         ne_1 = BackendDAEUtil.systemSize(syst);
-                print("kook4\n");
-
         nv_1 = BackendVariable.daenumVariables(syst);
         ass1_2 = assignmentsArrayExpand(ass1_1,ne_1,memsize,-1);
         ass2_2 = assignmentsArrayExpand(ass2_1,nv_1,memsize,-1);
