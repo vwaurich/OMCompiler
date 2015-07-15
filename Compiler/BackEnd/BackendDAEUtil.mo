@@ -110,6 +110,7 @@ protected import Tearing;
 protected import Types;
 protected import UnitCheck;
 protected import Values;
+protected import Vectorization;
 protected import XMLDump;
 
 protected
@@ -6910,22 +6911,17 @@ protected
 algorithm
   BackendDAE.DAE(systs,shared) := inDAE;
   // reduce index
-  print("test1\n");
   (systs,shared,args,causalized) := mapCausalizeDAE(systs,shared,inMatchingOptions,matchingAlgorithm,stateDeselection,{},{},false);
-    print("test2\n");
 
   //SimCodeUtil.execStat("matching");
   // do late inline
   outDAE := if dolateinline then BackendInline.lateInlineFunction(BackendDAE.DAE(systs,shared)) else BackendDAE.DAE(systs,shared);
   // do state selection
-    print("test3\n");
 
   BackendDAE.DAE(systs,shared) := stateDeselectionDAE(causalized,outDAE,args,stateDeselection);
-    print("test4\n");
 
   // sort assigned equations to blt form
   systs := mapSortEqnsDAE(systs,shared,{});
-    print("test5\n");
 
   outDAE := BackendDAE.DAE(systs,shared);
   //SimCodeUtil.execStat("sorting");
@@ -7488,7 +7484,8 @@ algorithm
                        (CommonSubExpression.commonSubExpressionReplacement, "comSubExp", false),
                        (CommonSubExpression.CSE_EachCall, "CSE_EachCall", false),
                        (BackendDump.dumpDAE, "dumpDAE", false),
-                       (XMLDump.dumpDAEXML, "dumpDAEXML", false)
+                       (XMLDump.dumpDAEXML, "dumpDAEXML", false),
+                       (Vectorization.causalizeForEquations, "causalizeForEquations", true)
                        };
   strPreOptModules := getPreOptModulesString();
   strPreOptModules := Util.getOptionOrDefault(ostrPreOptModules,strPreOptModules);

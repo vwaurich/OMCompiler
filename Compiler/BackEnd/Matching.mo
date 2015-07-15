@@ -5283,24 +5283,13 @@ algorithm
       BackendDAE.Shared shared;
     case (_,_,_,_,_,_)
       equation
-        print("testo1\n");
         neqns = BackendDAEUtil.systemSize(isyst);
         nvars = BackendVariable.daenumVariables(isyst);
-                print("testo2\n");
-
         true = intGt(nvars,0);
         true = intGt(neqns,0);
-                print("testo3\n");
-
         (vec1,vec2) = getAssignment(clearMatching,nvars,neqns,isyst);
-                print("testo4\n");
-
         true = if not clearMatching then BackendDAEEXT.setAssignment(neqns, nvars, vec1, vec2) else true;
-                print("testo5\n");
-
         (vec1,vec2,syst,shared,arg) = matchingExternal({},false,5,Config.getCheapMatchingAlgorithm(),if clearMatching then 1 else 0,isyst,ishared,nvars, neqns, vec1, vec2, inMatchingOptions, sssHandler, inArg);
-                print("testo6\n");
-
         syst = BackendDAEUtil.setEqSystMatching(syst,BackendDAE.MATCHING(vec2,vec1,{}));
       then
         (syst,shared,arg);

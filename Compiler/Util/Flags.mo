@@ -666,7 +666,8 @@ constant ConfigFlag PRE_OPT_MODULES = CONFIG_FLAG(12, "preOptModules",
     // "addInitialStmtsToAlgorithms",
     "resolveLoops",
     "evalFunc",
-    "sortEqnsVars"
+    "sortEqnsVars",
+    "causalizeForEquations"
     }),
   SOME(STRING_DESC_OPTION({
     ("CSE_EachCall", Util.gettext("Common Function Call Elimination")),
@@ -698,7 +699,8 @@ constant ConfigFlag PRE_OPT_MODULES = CONFIG_FLAG(12, "preOptModules",
     ("evalFunc", Util.gettext("evaluates functions partially")),
     ("comSubExp", Util.gettext("replaces common sub expressions")),
     ("dumpDAE", Util.gettext("dumps the DAE representation of the current transformation state")),
-    ("dumpDAEXML", Util.gettext("dumps the DAE as xml representation of the current transformation state"))
+    ("dumpDAEXML", Util.gettext("dumps the DAE as xml representation of the current transformation state")),
+    ("causalizeForEquations", Util.gettext("causalizes a dae including for-equations"))
     })),
   Util.gettext("Sets the pre optimization modules to use in the back end. See --help=optmodules for more info."));
 

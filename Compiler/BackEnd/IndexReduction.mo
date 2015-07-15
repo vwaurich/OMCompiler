@@ -114,6 +114,10 @@ algorithm
       BackendDAE.StructurallySingularSystemHandlerArg arg;
       BackendDAE.EqSystem syst;
       BackendDAE.Shared shared;
+    case _::_
+       guard BackendDAEUtil.hasEqSystemMatching(inSystem)
+       equation
+    then ({},-1,inSystem,inShared,inAssignments1,inAssignments2,inArg);
 
     case _::_ equation
       //  BackendDump.printEqSystem(inSystem);
