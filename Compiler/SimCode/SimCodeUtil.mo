@@ -1498,7 +1498,7 @@ algorithm
       String cname, fileDir;
       Integer maxDelayedExpIndex, uniqueEqIndex, numberofEqns, numStateSets, numberOfJacobians;
       Integer numberofLinearSys, numberofNonLinearSys, numberofMixedSys;
-      BackendDAE.BackendDAE dlow;
+      BackendDAE.BackendDAE dlow,dlow_scalar;
       BackendDAE.BackendDAE initDAE;
       DAE.FunctionTree functionTree;
       BackendDAE.SymbolicJacobians symJacs;
@@ -1564,21 +1564,28 @@ algorithm
       uniqueEqIndex = 1;
       ifcpp = stringEqual(Config.simCodeTarget(), "Cpp");
 
+      BackendDump.dumpBackendDAE(dlow,"dlow");
+
       if Flags.isSet(Flags.VECTORIZE) then
         // prepare the equations
-        dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.prepareVectorizedDAE0);
+        //dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.prepareVectorizedDAE0);
+        dlow_scalar = BackendDAEUtil.mapEqSystem(dlow, Vectorization.scalarizeEqSystem);
+        BackendDump.dumpBackendDAE(dlow_scalar,"dlowScalar");
       end if;
 
+      print("test1\n");
 
       backendMapping = setUpBackendMapping(inBackendDAE);
       if Flags.isSet(Flags.VISUAL_XML) then
         VisualXML.visualizationInfoXML(dlow, filenamePrefix);
       end if;
+      print("test2\n");
 
       // fcall(Flags.FAILTRACE, print, "is that Cpp? : " + Dump.printBoolStr(ifcpp) + "\n");
 
       // generate initDAE before replacing pre(alias)!
-      (initDAE, useHomotopy, removedInitialEquationLst, primaryParameters, allPrimaryParameters) = Initialization.solveInitialSystem(dlow);
+      (initDAE, useHomotopy, removedInitialEquationLst, primaryParameters, allPrimaryParameters) = Initialization.solveInitialSystem(dlow_scalar);
+      print("test3\n");
 
       if Flags.isSet(Flags.ITERATION_VARS) then
         BackendDAEOptimize.listAllIterationVariables(dlow);
@@ -1586,9 +1593,11 @@ algorithm
 
       // replace pre(alias) in time-equations
       dlow = BackendDAEOptimize.simplifyTimeIndepFuncCalls(dlow);
+      print("test4\n");
 
       // initialization stuff
       (initialEquations, removedInitialEquations, uniqueEqIndex, tempvars) = createInitialEquations(initDAE, removedInitialEquationLst, uniqueEqIndex, {});
+      print("test5\n");
 
       // addInitialStmtsToAlgorithms
       dlow = BackendDAEOptimize.addInitialStmtsToAlgorithms(dlow);
@@ -1607,12 +1616,14 @@ algorithm
       relations = FindZeroCrossings.getRelations(dlow);
       sampleZC = FindZeroCrossings.getSamples(dlow);
       zeroCrossings = if ifcpp then listAppend(zeroCrossings, sampleZC) else zeroCrossings;
+      print("test6\n");
 
       // equation generation for euler, dassl2, rungekutta
       ( uniqueEqIndex, odeEquations, algebraicEquations, allEquations, equationsForZeroCrossings, tempvars,
         equationSccMapping, eqBackendSimCodeMapping, backendMapping) =
             createEquationsForSystems( systs, shared, uniqueEqIndex, {}, {}, {}, {}, zeroCrossings, tempvars, 1, {}, {},backendMapping);
       highestSimEqIndex = uniqueEqIndex;
+      print("test7\n");
 
       //(remEqLst,paramAsserts) = List.fold1(BackendEquation.equationList(removedEqs), getParamAsserts,knownVars,({},{}));
       //((uniqueEqIndex, removedEquations)) = BackendEquation.traverseEquationArray(BackendEquation.listEquation(remEqLst), traversedlowEqToSimEqSystem, (uniqueEqIndex, {}));
@@ -1629,6 +1640,7 @@ algorithm
       (uniqueEqIndex, parameterEquations) = createParameterEquations(uniqueEqIndex, parameterEquations, primaryParameters, allPrimaryParameters);
       //((uniqueEqIndex, paramAssertSimEqs)) = BackendEquation.traverseEquationArray(BackendEquation.listEquation(paramAsserts), traversedlowEqToSimEqSystem, (uniqueEqIndex, {}));
       //parameterEquations = listAppend(parameterEquations,paramAssertSimEqs);
+      print("test8\n");
 
       ((uniqueEqIndex, algorithmAndEquationAsserts)) = BackendDAEUtil.foldEqSystem(dlow, createAlgorithmAndEquationAsserts, (uniqueEqIndex, {}));
       discreteModelVars = BackendDAEUtil.foldEqSystem(dlow, extractDiscreteModelVars, {});
@@ -1648,7 +1660,7 @@ algorithm
       if Flags.isSet(Flags.VECTORIZE) then
         // prepare the variables
         //dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.prepareVectorizedDAE1);
-        dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.enlargeIteratedArrayVars);
+        //dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.enlargeIteratedArrayVars);
       end if;
 
       modelInfo = createModelInfo(class_, dlow, functions, {}, numStateSets, fileDir);
@@ -3144,7 +3156,7 @@ algorithm
       list<SimCode.SimEqSystem> resEqs;
       list<BackendDAE.WhenClause> wcl;
       DAE.ComponentRef left, varOutput;
-      DAE.Exp e1, e2, varexp, exp_, right, cond, prevarexp;
+      DAE.Exp e1, e2, varexp, exp_, right, cond, prevarexp, iter, start, stop;
       BackendDAE.WhenEquation whenEquation, elseWhen;
       String algStr, message, eqStr;
       DAE.ElementSource source;
@@ -3201,6 +3213,35 @@ algorithm
         (conditions, initialCall) = BackendDAEUtil.getConditionList(cond);
       then
         ({SimCode.SES_WHEN(iuniqueEqIndex, conditions, initialCall, left, right, SOME(elseWhenEquation), source)}, iuniqueEqIndex+1, itempvars);
+
+    // for equation
+    case (_, _, BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqns), _, _, _, _)
+      equation
+        eqn = BackendEquation.equationNth1(eqns, eqNum);
+        BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop, left=e1, right=e2, source=source) = eqn;
+        print("CREATE FOR_SIMEQSYS\n");
+
+        (v as BackendDAE.VAR(varName = cr)) = BackendVariable.getVarAt(vars, varNum);
+          print("eq: "+BackendDump.equationString(eqn)+" ---> "+BackendDump.varString(v)+"\n");
+        varexp = Expression.crefExp(cr);
+        varexp = if BackendVariable.isStateVar(v) then Expression.expDer(varexp) else varexp;
+        BackendDAE.SHARED(functionTree = funcs) = shared;
+
+        //(exp_, asserts, solveEqns, solveCr) = ExpressionSolve.solve2(e1, e2, varexp, SOME(funcs), SOME(iuniqueEqIndex));
+        exp_ = Vectorization.solveForEquationForArrayVar(e1,e2,iter,DAE.RANGE(Expression.typeof(varexp),start,NONE(),stop),varexp,iuniqueEqIndex);
+
+        solveEqns = {};
+        solveCr = {};
+        asserts = {};
+        solveEqns = listReverse(solveEqns);
+        solveCr = listReverse(solveCr);
+
+        eqSystlst = {SimCode.SES_FOR_LOOP(iuniqueEqIndex+1,iter,start,stop,cr,exp_,source)};
+          print("CREATED LOOP SES: "+dumpSimEqSystemLst(eqSystlst)+"\n");
+
+        tempvars = itempvars;
+      then
+        (eqSystlst, iuniqueEqIndex+1,tempvars);
 
     // single equation
     case (_, _, BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqns), _, _, _, _)

@@ -144,9 +144,11 @@ algorithm
     ((vars, fixvars, eqns, reeqns, _)) := List.fold(systs, collectInitialVarsEqnsSystem, ((vars, fixvars, eqns, reeqns, hs)));
 
     ((eqns, reeqns)) := BackendVariable.traverseBackendDAEVars(vars, collectInitialBindings, (eqns, reeqns));
+    print("jojo6\n");
 
     // replace initial(), sample(...), delay(...) and homotopy(...)
     useHomotopy := BackendDAEUtil.traverseBackendDAEExpsEqnsWithUpdate(eqns, simplifyInitialFunctions, false);
+    print("jojo7\n");
 
     vars := BackendVariable.rehashVariables(vars);
     fixvars := BackendVariable.rehashVariables(fixvars);
@@ -192,7 +194,9 @@ algorithm
     // initdae := BackendDAE.DAE({initsyst}, shared);
 
     // fix over- and under-constrained subsystems
-    (initdae, dumpVars2, removedEqns) := analyzeInitialSystem(initdae, dae, initVars);
+    //(initdae, dumpVars2, removedEqns) := analyzeInitialSystem(initdae, dae, initVars);
+    dumpVars2 := {};
+    removedEqns := {};
     dumpVars := listAppend(dumpVars, dumpVars2);
 
     // some debug prints

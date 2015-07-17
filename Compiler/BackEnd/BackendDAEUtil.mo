@@ -6909,6 +6909,9 @@ protected
   list<Option<BackendDAE.StructurallySingularSystemHandlerArg>> args;
   Boolean causalized;
 algorithm
+  if Flags.isSet(Flags.VECTORIZE) then
+    outDAE := Vectorization.causalizeForEquations(inDAE);
+  else
   BackendDAE.DAE(systs,shared) := inDAE;
   // reduce index
   (systs,shared,args,causalized) := mapCausalizeDAE(systs,shared,inMatchingOptions,matchingAlgorithm,stateDeselection,{},{},false);
@@ -6925,6 +6928,7 @@ algorithm
 
   outDAE := BackendDAE.DAE(systs,shared);
   //SimCodeUtil.execStat("sorting");
+  end if;
 end causalizeDAE;
 
 protected function mapCausalizeDAE "

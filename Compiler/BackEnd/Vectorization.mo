@@ -198,7 +198,7 @@ algorithm
   //slice more stuff
   //-------------------------------------------
   allScalarCrefs := scalarCrefs2;
-  for i in List.intRange(2) loop
+  for i in List.intRange(1) loop
     //split for-equations
     print("SPLIT EQUATIONS ROUND "+intString(i)+"\n");
   (forEqs,_) := BackendVarTransform.replaceEquations(forEqs,repl1,NONE());
@@ -292,8 +292,8 @@ protected
 algorithm
   BackendDAE.EQSYSTEM(orderedVars = vars, orderedEqs = eqs, stateSets=stateSets, partitionKind=partitionKind) := sysIn;
   (m,mT) := BackendDAEUtil.incidenceMatrix(sysIn,BackendDAE.NORMAL(),NONE());
-    BackendDump.dumpIncidenceMatrix(m);
-    BackendDump.dumpIncidenceMatrix(mT);
+    //BackendDump.dumpIncidenceMatrix(m);
+    //BackendDump.dumpIncidenceMatrix(mT);
 
   //match the system, get components
   numEqs := BackendDAEUtil.equationArraySize(eqs);
@@ -306,8 +306,8 @@ algorithm
   BackendDAEEXT.getAssignment(ass2, ass1);
   perfectMatching := listEmpty(Matching.getUnassigned(numVars, ass1, {}));
   sys := BackendDAE.EQSYSTEM(vars, eqs, SOME(m), SOME(mT), BackendDAE.MATCHING(ass1,ass2,{}), stateSets, partitionKind);
-    BackendDump.dumpEqSystem(sys,"CAUSALIZE_SYSTEM");
-    print("matching is perfect "+ boolString(perfectMatching) +"\n");
+    //BackendDump.dumpEqSystem(sys,"CAUSALIZE_SYSTEM");
+    //print("matching is perfect "+ boolString(perfectMatching) +"\n");
 
 	// perform BLT to order the StrongComponents
 	mapIncRowEqn := listArray(List.intRange(numEqs));
@@ -828,8 +828,8 @@ algorithm
   case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop,left=DAE.CREF(componentRef=cref1),right=DAE.CREF(componentRef=cref2)),(vars,repl,eqLst,simpleEqLst,_))
     equation
       //alias vars in for equation
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident2)))} = ComponentReference.crefSubs(cref2);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_IDENT(ident=ident1)))} = ComponentReference.crefSubs(cref1);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_IDENT(ident=ident2)))} = ComponentReference.crefSubs(cref2);
       true = stringEqual(ident1,ident2);
       cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
       cref2 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
@@ -843,8 +843,8 @@ algorithm
   case(BackendDAE.FOR_EQUATION(iter=iter, start=start, stop=stop,left=DAE.CREF(componentRef=cref1),right=DAE.UNARY(operator=DAE.UMINUS(ty=ty),exp=DAE.CREF(componentRef=cref2))),(vars,repl,eqLst,simpleEqLst,_))
     equation
       //alias vars in for equation
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident2)))} = ComponentReference.crefSubs(cref2);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_IDENT(ident=ident1)))} = ComponentReference.crefSubs(cref1);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_IDENT(ident=ident2)))} = ComponentReference.crefSubs(cref2);
       true = stringEqual(ident1,ident2);
       cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
       cref2 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
@@ -859,8 +859,8 @@ algorithm
     equation
       true = Expression.isZero(exp);
       //alias vars in for equation
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident1)))} = ComponentReference.crefSubs(cref1);
-      {DAE.INDEX(DAE.CREF(DAE.CREF_ITER(ident=ident2)))} = ComponentReference.crefSubs(cref2);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_IDENT(ident=ident1)))} = ComponentReference.crefSubs(cref1);
+      {DAE.INDEX(DAE.CREF(DAE.CREF_IDENT(ident=ident2)))} = ComponentReference.crefSubs(cref2);
       true = stringEqual(ident1,ident2);
       cref1 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref1,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
       cref2 = BackendArrayVarTransform.replaceIteratorWithRangeInCref(cref2,iter,DAE.RANGE(Expression.typeof(start),start,NONE(),stop));
@@ -1551,7 +1551,7 @@ algorithm
       crefMinMax :=  List.fold(similarEqs,getCrefIdcsForEquation,crefMinMax);
       ((min,max)) := List.fold1(crefMinMax,getIterationRangesForCrefs,listLength(similarEqs),(-1,-1));
       // update crefs in equation
-      iterator := DAE.CREF(DAE.CREF_ITER("i",-1,DAE.T_INTEGER_DEFAULT,{}),DAE.T_INTEGER_DEFAULT);
+      iterator := DAE.CREF(DAE.CREF_IDENT("i",DAE.T_INTEGER_DEFAULT,{}),DAE.T_INTEGER_DEFAULT);
       (BackendDAE.EQUATION(exp=lhs,scalar=rhs),_) := BackendEquation.traverseExpsOfEquation(eq,setIteratorSubscriptCrefinEquation,(crefMinMax,iterator));
       eq := BackendDAE.FOR_EQUATION(iterator,DAE.ICONST(min),DAE.ICONST(max),lhs,rhs,source,attr);
       foldEqs := buildBackendDAEForEquations(rest,(eq::foldIn));
@@ -3634,6 +3634,161 @@ algorithm
   then false;
   end matchcontinue;
 end isAliasVarOf;
+
+//-----------------------------------------------
+// Scalarize the equation system
+//-----------------------------------------------
+
+public function scalarizeEqSystem
+  input BackendDAE.EqSystem systIn;
+  input BackendDAE.Shared sharedIn;
+  output BackendDAE.EqSystem systOut;
+  output BackendDAE.Shared sharedOut;
+protected
+  BackendDAE.Variables vars;
+  BackendDAE.EquationArray eqs;
+  BackendDAE.StateSets stateSets;
+  BackendDAE.BaseClockPartitionKind partitionKind;
+  list<BackendDAE.Var> varLst;
+  list<BackendDAE.Equation> eqLst;
+algorithm
+  BackendDAE.EQSYSTEM(orderedVars=vars,orderedEqs=eqs,stateSets=stateSets,partitionKind=partitionKind) := systIn;
+
+  //scalarize variables
+  varLst := BackendVariable.traverseBackendDAEVars(vars,scalarizeVar,{});
+
+  //scalarize equations
+  eqLst := BackendEquation.traverseEquationArray(eqs,scalarizeEquation,{});
+
+  systOut := BackendDAE.EQSYSTEM(BackendVariable.listVar(varLst),BackendEquation.listEquation(eqLst),NONE(),NONE(),BackendDAE.NO_MATCHING(),stateSets,partitionKind);
+  sharedOut := sharedIn;
+end scalarizeEqSystem;
+
+protected function scalarizeVar"scalarizes unexpanded array-variables"
+  input BackendDAE.Var varIn;
+  input list<BackendDAE.Var> varsFoldIn;
+  output BackendDAE.Var varOut;
+  output list<BackendDAE.Var> varsFoldOut;
+algorithm
+  (varOut,varsFoldOut) := matchcontinue(varIn,varsFoldIn)
+    local
+      Integer start,stop;
+      DAE.ComponentRef cref;
+      DAE.Subscript sub;
+      BackendDAE.Var var;
+      list<BackendDAE.Var> varLst={};
+    case(BackendDAE.VAR(varName=cref),_)
+      algorithm
+        {sub} := ComponentReference.crefSubs(cref);
+        DAE.INDEX(DAE.RANGE(start=DAE.ICONST(start),stop=DAE.ICONST(stop))) := sub;
+        for i in List.intRange2(start,stop) loop
+          cref := replaceFirstSubsInCref(cref,{DAE.INDEX(DAE.ICONST(i))});
+          var := BackendVariable.copyVarNewName(cref,varIn);
+          varLst := var::varLst;
+        end for;
+     then (varIn,listAppend(varLst,varsFoldIn));
+   else
+     then (varIn,varIn::varsFoldIn);
+  end matchcontinue;
+end scalarizeVar;
+
+
+protected function scalarizeEquation"scalarizes for equations and rolls out sum-expressions"
+  input BackendDAE.Equation eqIn;
+  input list<BackendDAE.Equation> eqsFoldIn;
+  output BackendDAE.Equation eqOut;
+  output list<BackendDAE.Equation> eqsFoldOut;
+algorithm
+  (eqOut,eqsFoldOut) := matchcontinue(eqIn,eqsFoldIn)
+    local
+      Integer start,stop,i;
+      DAE.ElementSource source;
+      DAE.Exp iter, left, right, left1, right1;
+      DAE.Subscript sub;
+      BackendDAE.Equation eq;
+      BackendDAE.EquationAttributes attr;
+      list<BackendDAE.Equation> eqLst={};
+    case(BackendDAE.FOR_EQUATION(iter=iter,start=DAE.ICONST(start), stop=DAE.ICONST(stop), left=left, right=right, source=source, attr=attr),_)
+      algorithm
+        for i in List.intRange2(start,stop) loop
+          (left1,_) := Expression.traverseExpBottomUp(left,BackendArrayVarTransform.replaceIteratorWithRangeInCrefInExp,(iter,DAE.ICONST(i)));
+          (right1,_) := Expression.traverseExpBottomUp(right,BackendArrayVarTransform.replaceIteratorWithRangeInCrefInExp,(iter,DAE.ICONST(i)));
+          eq := BackendDAE.EQUATION(left1,right1,source,attr);
+          eqLst := eq::eqLst;
+        end for;
+     then (eqIn,listAppend(eqLst,eqsFoldIn));
+   else
+     algorithm
+     (eq,_) := BackendEquation.traverseExpsOfEquation(eqIn,scalarizeExp,"dummy");
+     then (eqIn,eq::eqsFoldIn);
+  end matchcontinue;
+end scalarizeEquation;
+
+
+protected function scalarizeExp"rolls out sum-expressions"
+  input DAE.Exp eIn;
+  input String argIn;
+  output DAE.Exp eOut;
+  output String argOut;
+algorithm
+  (eOut,argOut) := matchcontinue(eIn,argIn)
+    local
+      Integer start,stop,i;
+      DAE.ElementSource source;
+      DAE.Exp iter, left,right, body, summand, summation;
+      DAE.Operator op;
+      DAE.Subscript sub;
+      DAE.Type ty;
+    case(DAE.SUM(iterator=iter,startIt=DAE.ICONST(start), endIt=DAE.ICONST(stop), body=body),_)
+      algorithm
+        ty := Expression.typeof(body);
+        summation := Expression.createZeroExpression(ty);
+        for i in List.intRange2(start,stop) loop
+          (summand,_) := Expression.traverseExpBottomUp(body,BackendArrayVarTransform.replaceIteratorWithRangeInCrefInExp,(iter,DAE.ICONST(i)));
+          summation := DAE.BINARY(summation,DAE.ADD(ty),summand);
+        end for;
+
+     then (summation,argIn);
+
+    case(DAE.BINARY(exp1=left,operator=op,exp2=right),_)
+      algorithm
+        (left,_) := scalarizeExp(left,argIn);
+        (right,_) := scalarizeExp(right,argIn);
+      then (DAE.BINARY(left,op,right),argIn);
+   else
+     algorithm
+     then (eIn,argIn);
+  end matchcontinue;
+end scalarizeExp;
+
+//-----------------------------------------------
+// Scalarize the equation system
+//-----------------------------------------------
+
+public function solveForEquationForArrayVar"solves a for equation for a ranged var."
+  input DAE.Exp lhs;
+  input DAE.Exp rhs;
+  input DAE.Exp iter;
+  input DAE.Exp forRange;
+  input DAE.Exp solveFor;
+  input Integer iuniqueEqIndex;
+  output DAE.Exp rhsOut;
+protected
+  Integer start1,start2;
+  DAE.ComponentRef cref;
+  DAE.Exp sub, offset;
+algorithm
+  cref := Expression.expCref(solveFor);
+  {DAE.INDEX(sub)} := ComponentReference.crefSubs(cref);
+  DAE.RANGE(start=DAE.ICONST(start1)) := forRange;
+  DAE.RANGE(start=DAE.ICONST(start2)) := sub;
+  offset := DAE.ICONST(start2-start1);
+  sub := ExpressionSimplify.simplify(DAE.BINARY(iter,DAE.ADD(DAE.T_INTEGER_DEFAULT),offset));
+  cref := replaceFirstSubsInCref(cref,{DAE.INDEX(sub)});
+    print("SOLVE_EQ: "+ExpressionDump.printExpStr(lhs)+" = "+ExpressionDump.printExpStr(rhs)+" ---> "+ComponentReference.printComponentRefStr(cref)+"\n");
+  (rhsOut,_) := ExpressionSolve.solve(lhs, rhs, Expression.crefExp(cref));
+    print("rhsOut: "+ExpressionDump.printExpStr(rhsOut)+"\n");
+end solveForEquationForArrayVar;
 
 annotation(__OpenModelica_Interface="backend");
 end Vectorization;
