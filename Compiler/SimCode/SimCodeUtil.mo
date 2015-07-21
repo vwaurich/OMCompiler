@@ -1564,28 +1564,24 @@ algorithm
       uniqueEqIndex = 1;
       ifcpp = stringEqual(Config.simCodeTarget(), "Cpp");
 
-      BackendDump.dumpBackendDAE(dlow,"dlow");
-
       if Flags.isSet(Flags.VECTORIZE) then
         // prepare the equations
         //dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.prepareVectorizedDAE0);
-        dlow_scalar = BackendDAEUtil.mapEqSystem(dlow, Vectorization.scalarizeEqSystem);
-        BackendDump.dumpBackendDAE(dlow_scalar,"dlowScalar");
+        //dlow_scalar = BackendDAEUtil.mapEqSystem(dlow, Vectorization.scalarizeEqSystem);
+        //BackendDump.dumpBackendDAE(dlow_scalar,"dlowScalar");
+      else
+        dlow_scalar = dlow;
       end if;
-
-      print("test1\n");
 
       backendMapping = setUpBackendMapping(inBackendDAE);
       if Flags.isSet(Flags.VISUAL_XML) then
         VisualXML.visualizationInfoXML(dlow, filenamePrefix);
       end if;
-      print("test2\n");
 
       // fcall(Flags.FAILTRACE, print, "is that Cpp? : " + Dump.printBoolStr(ifcpp) + "\n");
 
       // generate initDAE before replacing pre(alias)!
-      (initDAE, useHomotopy, removedInitialEquationLst, primaryParameters, allPrimaryParameters) = Initialization.solveInitialSystem(dlow_scalar);
-      print("test3\n");
+      (initDAE, useHomotopy, removedInitialEquationLst, primaryParameters, allPrimaryParameters) = Initialization.solveInitialSystem(dlow);
 
       if Flags.isSet(Flags.ITERATION_VARS) then
         BackendDAEOptimize.listAllIterationVariables(dlow);
@@ -1593,11 +1589,9 @@ algorithm
 
       // replace pre(alias) in time-equations
       dlow = BackendDAEOptimize.simplifyTimeIndepFuncCalls(dlow);
-      print("test4\n");
 
       // initialization stuff
       (initialEquations, removedInitialEquations, uniqueEqIndex, tempvars) = createInitialEquations(initDAE, removedInitialEquationLst, uniqueEqIndex, {});
-      print("test5\n");
 
       // addInitialStmtsToAlgorithms
       dlow = BackendDAEOptimize.addInitialStmtsToAlgorithms(dlow);
@@ -1616,14 +1610,12 @@ algorithm
       relations = FindZeroCrossings.getRelations(dlow);
       sampleZC = FindZeroCrossings.getSamples(dlow);
       zeroCrossings = if ifcpp then listAppend(zeroCrossings, sampleZC) else zeroCrossings;
-      print("test6\n");
 
       // equation generation for euler, dassl2, rungekutta
       ( uniqueEqIndex, odeEquations, algebraicEquations, allEquations, equationsForZeroCrossings, tempvars,
         equationSccMapping, eqBackendSimCodeMapping, backendMapping) =
             createEquationsForSystems( systs, shared, uniqueEqIndex, {}, {}, {}, {}, zeroCrossings, tempvars, 1, {}, {},backendMapping);
       highestSimEqIndex = uniqueEqIndex;
-      print("test7\n");
 
       //(remEqLst,paramAsserts) = List.fold1(BackendEquation.equationList(removedEqs), getParamAsserts,knownVars,({},{}));
       //((uniqueEqIndex, removedEquations)) = BackendEquation.traverseEquationArray(BackendEquation.listEquation(remEqLst), traversedlowEqToSimEqSystem, (uniqueEqIndex, {}));
@@ -1640,7 +1632,6 @@ algorithm
       (uniqueEqIndex, parameterEquations) = createParameterEquations(uniqueEqIndex, parameterEquations, primaryParameters, allPrimaryParameters);
       //((uniqueEqIndex, paramAssertSimEqs)) = BackendEquation.traverseEquationArray(BackendEquation.listEquation(paramAsserts), traversedlowEqToSimEqSystem, (uniqueEqIndex, {}));
       //parameterEquations = listAppend(parameterEquations,paramAssertSimEqs);
-      print("test8\n");
 
       ((uniqueEqIndex, algorithmAndEquationAsserts)) = BackendDAEUtil.foldEqSystem(dlow, createAlgorithmAndEquationAsserts, (uniqueEqIndex, {}));
       discreteModelVars = BackendDAEUtil.foldEqSystem(dlow, extractDiscreteModelVars, {});
@@ -12906,7 +12897,7 @@ protected
   HashTableCrIListArray.HashTable tmpVarToArrayIndexMapping; // Maps each array variable to a list of variable indices
   HashTableCrILst.HashTable tmpVarToIndexMapping; // Maps each variable to a concrete index
 algorithm
-  oCurrentVarIndicesHashTable := match(iVar, iVarType, iCurrentVarIndicesHashTable)
+  oCurrentVarIndicesHashTable := matchcontinue(iVar, iVarType, iCurrentVarIndicesHashTable)
     case(SimCodeVar.SIMVAR(name=name, numArrayElement=numArrayElement),_,(tmpCurrentVarIndices,tmpVarToArrayIndexMapping,tmpVarToIndexMapping))
       equation
         (tmpCurrentVarIndices,varIdx) = getArrayIdxByVar(iVar, iVarType, tmpVarToIndexMapping, tmpCurrentVarIndices);
@@ -12943,7 +12934,7 @@ algorithm
       equation
         Error.addMessage(Error.INTERNAL_ERROR, {"Unknown case for addVarToArrayIndexMapping.\n"});
       then iCurrentVarIndicesHashTable;
-  end match;
+  end matchcontinue;
 end addVarToArrayIndexMapping;
 
 protected function checkIfSubscriptsContainsUnhandlableIndices "author: marcusw

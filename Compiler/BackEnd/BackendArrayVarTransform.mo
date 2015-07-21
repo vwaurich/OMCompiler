@@ -505,7 +505,7 @@ algorithm
 end getReplSubExps;
 
 
-protected function replaceSubExp"replaces a subscript in a cref exp"
+public function replaceSubExp"replaces a subscript in a cref exp"
   input DAE.Exp expIn;
   input DAE.Subscript subIn;
   output DAE.Exp expOut;
@@ -513,11 +513,16 @@ algorithm
   expOut := matchcontinue(expIn,subIn)
     local
       DAE.ComponentRef cref;
+      DAE.Operator op;
       DAE.Type ty;
   case(DAE.CREF(componentRef=cref, ty=ty),_)
     equation
       cref = Vectorization.replaceFirstSubsInCref(cref,{subIn});
     then (DAE.CREF(cref,ty));
+  case(DAE.UNARY(operator=op, exp=DAE.CREF(componentRef=cref, ty=ty)),_)
+    equation
+      cref = Vectorization.replaceFirstSubsInCref(cref,{subIn});
+    then (DAE.UNARY(op,DAE.CREF(cref,ty)));
   else
     then expIn;
   end matchcontinue;      

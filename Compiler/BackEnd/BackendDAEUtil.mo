@@ -7004,27 +7004,21 @@ algorithm
         funcs = getFunctions(ishared);
         //(syst,_,_,mapEqnIncRow,mapIncRowEqn) = getIncidenceMatrixScalar(isyst,BackendDAE.SOLVABLE(), SOME(funcs));
         (syst,_,_) = getIncidenceMatrix(isyst,BackendDAE.SOLVABLE(), SOME(funcs));
-                BackendDump.dumpEqSystem(syst,"CAUSALIZE");
         mapEqnIncRow = listArray(List.map(List.intRange(19),List.create));
         mapIncRowEqn = listArray(List.intRange(19));
 
-        print("hoho1\n");
         match_opts = Util.getOptionOrDefault(inMatchingOptions,(BackendDAE.INDEX_REDUCTION(), BackendDAE.EXACT()));
         arg = IndexReduction.getStructurallySingularSystemHandlerArg(syst,ishared,mapEqnIncRow,mapIncRowEqn);
-                print("hoho2\n");
 
         // check singular system
         nvars = BackendVariable.daenumScalarVariables(syst);
         neqns = systemSize(syst);
-                print("hoho3\n");
 
         //syst = Causalize.singularSystemCheck(nvars,neqns,syst,match_opts,matchingAlgorithm,arg,ishared);
-                print("hoho4\n");
 
         // SimCodeUtil.execStat("transformDAE -> singularSystemCheck " + mAmethodstr);
         // match the system and reduce index if neccessary
         (syst,shared,arg) = matchingAlgorithmfunc(syst, ishared, false, match_opts, sssHandler, arg);
-                print("hoho5\n");
 
         // SimCodeUtil.execStat("transformDAE -> matchingAlgorithm " + mAmethodstr + " index Reduction Method " + str1);
       then (syst,shared,SOME(arg),true);

@@ -593,7 +593,7 @@ constant list<DebugFlag> allDebugFlags = {
   RUNTIME_STATIC_LINKING,
   DYNAMIC_TEARING_INFO,
   SORT_EQNS_AND_VARS
-};
+  };
 
 public
 // CONFIGURATION FLAGS

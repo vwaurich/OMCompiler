@@ -120,17 +120,16 @@ algorithm
     lower2(listReverse(elems), functionTree, HashTableExpToExp.emptyHashTable());
 
   if Flags.isSet(Flags.VECTORIZE) then
-    (varlst,knvarlst1,aliasvarLst,eqns) := Vectorization.buildForLoops(varlst,eqns);
-    knvarlst := listAppend(knvarlst,knvarlst1);
-  else
-    aliasvarLst := {};
+    // collect for-loops
+    //(varlst,knvarlst1,aliasvarLst,eqns,reqns) := Vectorization.buildForLoops(varlst,eqns,reqns);
+    (varlst,eqns) := Vectorization.collectForLoops(varlst,eqns);
   end if;
 
   vars := BackendVariable.listVar(varlst);
   knvars := BackendVariable.listVar(knvarlst);
   extVars := BackendVariable.listVar(extvarlst);
   whenclauses_1 := listReverse(whenclauses);
-  aliasVars := BackendVariable.listVar(aliasvarLst);
+  aliasVars := BackendVariable.listVar({});
   // handle alias equations
   (vars, knvars, extVars, aliasVars, eqns, reqns, ieqns, whenclauses_1) := handleAliasEquations(aliaseqns, vars, knvars, extVars, aliasVars, eqns, reqns, ieqns, whenclauses_1);
   vars_1 := detectImplicitDiscrete(vars, knvars, eqns);
@@ -160,6 +159,21 @@ algorithm
   nvarStr := intString(BackendVariable.varsSize(vars_1));
   Error.assertionOrAddSourceMessage(not Flags.isSet(Flags.DUMP_BACKENDDAE_INFO),Error.BACKENDDAEINFO_LOWER,{neqStr,nvarStr},Absyn.dummyInfo);
   SimCodeUtil.execStat("Generate backend data structure");
+
+
+  BackendDump.dumpBackendDAE(outBackendDAE, "before scalarizing");
+
+  if Flags.isSet(Flags.VECTORIZE) then
+    // removeSimpleEquations in for-equations
+    outBackendDAE := Vectorization.removeSimpleEquationsInForEquations(outBackendDAE);
+
+    //BackendDump.dumpBackendDAE(outBackendDAE, "after removeSimpleEquations");
+
+    // scalarize everything
+    outBackendDAE := Vectorization.scalarizeBackendDAE(outBackendDAE);
+  end if;
+  BackendDump.dumpBackendDAE(outBackendDAE, "after scalarizing");
+  print("DAE-size: "+intString(BackendDAEUtil.daeSize(outBackendDAE))+"\n");
 end lower;
 
 protected function lower2

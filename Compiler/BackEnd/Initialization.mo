@@ -64,6 +64,7 @@ protected import Expression;
 protected import ExpressionDump;
 protected import ExpressionSimplify;
 protected import Flags;
+protected import HpcOmTaskGraph;
 protected import List;
 protected import Matching;
 protected import Sorting;
@@ -111,11 +112,9 @@ algorithm
   try
     // TODO: remove this once the initialization is moved before post-optimization
     dae := BackendDAEOptimize.symEulerInit(inDAE);
-
     // inline all when equations, if active with body else with lhs=pre(lhs)
     dae := inlineWhenForInitialization(dae);
     // fcall2(Flags.DUMP_INITIAL_SYSTEM, BackendDump.dumpBackendDAE, dae, "inlineWhenForInitialization");
-
     (initVars, outPrimaryParameters, outAllPrimaryParameters) := selectInitializationVariablesDAE(dae);
     // fcall2(Flags.DUMP_INITIAL_SYSTEM, BackendDump.dumpVariables, initVars, "selected initialization variables");
     hs := collectPreVariables(dae);
@@ -128,28 +127,20 @@ algorithm
                                                       graph=graph,
                                                       functionTree=functionTree,
                                                       info=ei)) := dae;
-
     // collect vars and eqns for initial system
     vars := BackendVariable.emptyVars();
     fixvars := BackendVariable.emptyVars();
     eqns := BackendEquation.emptyEqns();
     reeqns := BackendEquation.emptyEqns();
-
     ((vars, fixvars, eqns, _)) := BackendVariable.traverseBackendDAEVars(avars, introducePreVarsForAliasVariables, (vars, fixvars, eqns, hs));
     ((vars, fixvars, eqns, _)) := BackendVariable.traverseBackendDAEVars(knvars, collectInitialVars, (vars, fixvars, eqns, hs));
     ((eqns, reeqns)) := BackendEquation.traverseEquationArray(inieqns, collectInitialEqns, (eqns, reeqns));
-
     // fcall2(Flags.DUMP_INITIAL_SYSTEM, BackendDump.dumpEquationArray, eqns, "initial equations");
 
     ((vars, fixvars, eqns, reeqns, _)) := List.fold(systs, collectInitialVarsEqnsSystem, ((vars, fixvars, eqns, reeqns, hs)));
-
     ((eqns, reeqns)) := BackendVariable.traverseBackendDAEVars(vars, collectInitialBindings, (eqns, reeqns));
-    print("jojo6\n");
-
     // replace initial(), sample(...), delay(...) and homotopy(...)
     useHomotopy := BackendDAEUtil.traverseBackendDAEExpsEqnsWithUpdate(eqns, simplifyInitialFunctions, false);
-    print("jojo7\n");
-
     vars := BackendVariable.rehashVariables(vars);
     fixvars := BackendVariable.rehashVariables(fixvars);
     evars := BackendVariable.emptyVars();
@@ -170,51 +161,45 @@ algorithm
                                 BackendDAE.INITIALSYSTEM(),
                                 {},
                                 ei);
-
     // generate initial system and pre-balance it
     initsyst := BackendDAEUtil.createEqSystem(vars, eqns);
     (initsyst, dumpVars) := preBalanceInitialSystem(initsyst);
     SimCodeUtil.execStat("created initial system");
-
     // split the initial system into independend subsystems
     initdae := BackendDAE.DAE({initsyst}, shared);
     if Flags.isSet(Flags.OPT_DAE_DUMP) then
       print(stringAppendList({"\ncreated initial system:\n\n"}));
       BackendDump.printBackendDAE(initdae);
     end if;
-
     (systs, shared) := BackendDAEOptimize.partitionIndependentBlocksHelper(initsyst, shared, Error.getNumErrorMessages(), true);
     initdae := BackendDAE.DAE(systs, shared);
     SimCodeUtil.execStat("partitioned initial system");
-
     if Flags.isSet(Flags.OPT_DAE_DUMP) then
       print(stringAppendList({"\npartitioned initial system:\n\n"}));
       BackendDump.printBackendDAE(initdae);
     end if;
     // initdae := BackendDAE.DAE({initsyst}, shared);
-
     // fix over- and under-constrained subsystems
-    //(initdae, dumpVars2, removedEqns) := analyzeInitialSystem(initdae, dae, initVars);
+
+    (initdae, dumpVars2, removedEqns) := analyzeInitialSystem(initdae, dae, initVars);
     dumpVars2 := {};
     removedEqns := {};
     dumpVars := listAppend(dumpVars, dumpVars2);
-
     // some debug prints
     if Flags.isSet(Flags.DUMP_INITIAL_SYSTEM) then
       BackendDump.dumpBackendDAE(initdae, "initial system");
     end if;
-
+  if Flags.isSet(Flags.GRAPHML) then
+    HpcOmTaskGraph.dumpBipartiteGraph(initdae, "INITDAE");
+  end if;
     // now let's solve the system!
     initdae := BackendDAEUtil.mapEqSystem(initdae, solveInitialSystemEqSystem);
-
     // transform and optimize DAE
     pastOptModules := BackendDAEUtil.getPostOptModules(SOME({"constantLinearSystem", "tearingSystem", "calculateStrongComponentJacobians", "solveSimpleEquations"}));
     matchingAlgorithm := BackendDAEUtil.getMatchingAlgorithm(NONE());
     daeHandler := BackendDAEUtil.getIndexReductionMethod(NONE());
-
     // solve system
     initdae := BackendDAEUtil.transformBackendDAE(initdae, SOME((BackendDAE.NO_INDEX_REDUCTION(), BackendDAE.EXACT())), NONE(), NONE());
-
     // simplify system
     (initdae, Util.SUCCESS()) := BackendDAEUtil.postOptimizeDAE(initdae, pastOptModules, matchingAlgorithm, daeHandler);
     if Flags.isSet(Flags.DUMP_INITIAL_SYSTEM) then
@@ -1183,7 +1168,6 @@ algorithm
     end if;
   end for;
   dae := BackendDAE.DAE(systs2, shared);
-
   (outDAE, (_, _, outDumpVars, outRemovedEqns)) := BackendDAEUtil.mapEqSystemAndFold(dae, analyzeInitialSystem2, (inDAE, inInitVars, {}, outRemovedEqns));
 end analyzeInitialSystem;
 
@@ -1230,21 +1214,22 @@ algorithm
 
     // (regular) determined system
     case (BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqns), (inDAE, initVars, dumpVars, removedEqns)) equation
-// print("index-0 start\n");
+ //print("index-0 start\n");
       (eqns2, dumpVars2, removedEqns2) = fixInitialSystem(vars, eqns, initVars, inShared, 0);
-// print("index-0 ende\n");
 
       // add dummy var + dummy eqn
       dumpVars = listAppend(dumpVars, dumpVars2);
       removedEqns = listAppend(removedEqns, removedEqns2);
       system = BackendDAEUtil.createEqSystem(vars, eqns2);
+       //print("index-0 ende\n");
+
     then (system, (inDAE, initVars, dumpVars, removedEqns));
 
     // (index-1) mixed-determined system
     case (BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqns), (inDAE, initVars, dumpVars, removedEqns)) equation
-// print("index-1 start\n");
+ //print("index-1 start\n");
       (eqns2, dumpVars2, removedEqns2) = fixInitialSystem(vars, eqns, initVars, inShared, 1);
-// print("index-1 ende\n");
+ //print("index-1 ende\n");
 
       // add dummy var + dummy eqn
       dumpVars = listAppend(dumpVars, dumpVars2);
@@ -1254,9 +1239,9 @@ algorithm
 
     // (index-2) mixed-determined system
     case (BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqns), (inDAE, initVars, dumpVars, removedEqns)) equation
-// print("index-2 start\n");
+ //print("index-2 start\n");
       (eqns2, dumpVars2, removedEqns2) = fixInitialSystem(vars, eqns, initVars, inShared, 2);
-// print("index-2 ende\n");
+ //print("index-2 ende\n");
 
       // add dummy var + dummy eqn
       dumpVars = listAppend(dumpVars, dumpVars2);
@@ -1266,9 +1251,9 @@ algorithm
 
     // (index-3) mixed-determined system
     case (BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqns), (inDAE, initVars, dumpVars, removedEqns)) equation
-// print("index-3 start\n");
+ //print("index-3 start\n");
       (eqns2, dumpVars2, removedEqns2) = fixInitialSystem(vars, eqns, initVars, inShared, 3);
-// print("index-3 ende\n");
+ //print("index-3 ende\n");
 
       // add dummy var + dummy eqn
       dumpVars = listAppend(dumpVars, dumpVars2);
@@ -1276,7 +1261,8 @@ algorithm
       system = BackendDAEUtil.createEqSystem(vars, eqns2);
     then (system, (inDAE, initVars, dumpVars, removedEqns));
 
-    else fail();
+    else
+      then fail();
   end matchcontinue;
 end analyzeInitialSystem2;
 

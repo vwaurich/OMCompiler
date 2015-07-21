@@ -4527,5 +4527,29 @@ algorithm
   end match;
 end varExp2;
 
+public function isRangeVar""
+  input BackendDAE.Var varIn;
+  output Boolean isRange;
+protected
+  DAE.ComponentRef cref;
+  list<DAE.Subscript> subs;
+algorithm
+  cref := varCref(varIn);
+  subs := ComponentReference.crefSubs(cref);
+  isRange := List.exist(subs,subIsRange);
+end isRangeVar;
+
+protected function subIsRange
+  input DAE.Subscript sub;
+  output Boolean isRange;
+algorithm
+  try
+    DAE.INDEX(DAE.RANGE()) := sub;
+    isRange := true;
+  else
+    isRange := false;
+  end try;
+end subIsRange;
+
 annotation(__OpenModelica_Interface="backend");
 end BackendVariable;

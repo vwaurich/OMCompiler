@@ -952,6 +952,16 @@ algorithm
   outBoolean := crefEqualNoStringCompare(inComponentRef1,inComponentRef2);
 end crefEqual;
 
+public function crefNotEqual
+"Returns true if two component references are not equal.
+  No string comparison of unparsed crefs is performed!"
+  input DAE.ComponentRef inComponentRef1;
+  input DAE.ComponentRef inComponentRef2;
+  output Boolean outBoolean;
+algorithm
+  outBoolean := not crefEqualNoStringCompare(inComponentRef1,inComponentRef2);
+end crefNotEqual;
+
 public function crefInLst  "returns true if the cref is in the list of crefs"
   input DAE.ComponentRef cref;
   input list<DAE.ComponentRef> lst;
@@ -959,6 +969,18 @@ public function crefInLst  "returns true if the cref is in the list of crefs"
 algorithm
   b := List.isMemberOnTrue(cref,lst,crefEqual);
 end crefInLst;
+
+public function crefNotInLst  "returns true if the cref is not in the list of crefs"
+  input DAE.ComponentRef cref;
+  input list<DAE.ComponentRef> lst;
+  output Boolean b;
+algorithm
+  if listEmpty(lst) then
+    b := true;
+  else
+    b := List.isMemberOnTrue(cref,lst,crefNotEqual);
+  end if;
+end crefNotInLst;
 
 public function crefEqualVerySlowStringCompareDoNotUse
 "Returns true if two component references are equal,
