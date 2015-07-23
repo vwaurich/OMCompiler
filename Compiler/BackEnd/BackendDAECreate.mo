@@ -66,6 +66,7 @@ protected import HashTableExpToExp;
 protected import HashTableExpToIndex;
 protected import HashTable;
 protected import HashTableCrToExpSourceTpl;
+protected import HpcOmTaskGraph;
 protected import Inline;
 protected import List;
 protected import SimCodeUtil;
@@ -160,19 +161,29 @@ algorithm
   Error.assertionOrAddSourceMessage(not Flags.isSet(Flags.DUMP_BACKENDDAE_INFO),Error.BACKENDDAEINFO_LOWER,{neqStr,nvarStr},Absyn.dummyInfo);
   SimCodeUtil.execStat("Generate backend data structure");
 
+  if Flags.isSet(Flags.GRAPHML) then
+    HpcOmTaskGraph.dumpBipartiteGraph(outBackendDAE, "_flatDAE");
+  end if;
 
   BackendDump.dumpBackendDAE(outBackendDAE, "before scalarizing");
 
   if Flags.isSet(Flags.VECTORIZE) then
     // removeSimpleEquations in for-equations
     outBackendDAE := Vectorization.removeSimpleEquationsInForEquations(outBackendDAE);
+      BackendDump.dumpBackendDAE(outBackendDAE, "after removeSimpleEquations");
 
-    //BackendDump.dumpBackendDAE(outBackendDAE, "after removeSimpleEquations");
+    outBackendDAE := Vectorization.causalizeForEquations(outBackendDAE);
+      //BackendDump.dumpBackendDAE(outBackendDAE, "after causalization");
 
     // scalarize everything
-    outBackendDAE := Vectorization.scalarizeBackendDAE(outBackendDAE);
+    //outBackendDAE := Vectorization.scalarizeBackendDAE(outBackendDAE);
+      //BackendDump.dumpBackendDAE(outBackendDAE, "after scalarizing");
+
   end if;
-  BackendDump.dumpBackendDAE(outBackendDAE, "after scalarizing");
+
+    if Flags.isSet(Flags.GRAPHML) then
+    HpcOmTaskGraph.dumpBipartiteGraph(outBackendDAE, "_flat_afterVec_DAE");
+  end if;
   print("DAE-size: "+intString(BackendDAEUtil.daeSize(outBackendDAE))+"\n");
 end lower;
 

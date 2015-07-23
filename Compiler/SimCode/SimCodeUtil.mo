@@ -1563,16 +1563,19 @@ algorithm
       System.tmpTickReset(0);
       uniqueEqIndex = 1;
       ifcpp = stringEqual(Config.simCodeTarget(), "Cpp");
+        BackendDump.dumpBackendDAE(dlow,"dlow");
 
       if Flags.isSet(Flags.VECTORIZE) then
         // prepare the equations
         //dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.prepareVectorizedDAE0);
-        //dlow_scalar = BackendDAEUtil.mapEqSystem(dlow, Vectorization.scalarizeEqSystem);
-        //BackendDump.dumpBackendDAE(dlow_scalar,"dlowScalar");
+        dlow_scalar = BackendDAEUtil.mapEqSystem(dlow, Vectorization.scalarizeEqSystem);
+        //dlow_scalar = dlow;
       else
         dlow_scalar = dlow;
       end if;
+        BackendDump.dumpBackendDAE(dlow_scalar,"dlowScalar");
 
+      print("teste1\n");
       backendMapping = setUpBackendMapping(inBackendDAE);
       if Flags.isSet(Flags.VISUAL_XML) then
         VisualXML.visualizationInfoXML(dlow, filenamePrefix);
@@ -1581,17 +1584,20 @@ algorithm
       // fcall(Flags.FAILTRACE, print, "is that Cpp? : " + Dump.printBoolStr(ifcpp) + "\n");
 
       // generate initDAE before replacing pre(alias)!
-      (initDAE, useHomotopy, removedInitialEquationLst, primaryParameters, allPrimaryParameters) = Initialization.solveInitialSystem(dlow);
+      (initDAE, useHomotopy, removedInitialEquationLst, primaryParameters, allPrimaryParameters) = Initialization.solveInitialSystem(dlow_scalar);
 
       if Flags.isSet(Flags.ITERATION_VARS) then
         BackendDAEOptimize.listAllIterationVariables(dlow);
       end if;
+      print("teste2\n");
 
       // replace pre(alias) in time-equations
       dlow = BackendDAEOptimize.simplifyTimeIndepFuncCalls(dlow);
+      print("teste3\n");
 
       // initialization stuff
       (initialEquations, removedInitialEquations, uniqueEqIndex, tempvars) = createInitialEquations(initDAE, removedInitialEquationLst, uniqueEqIndex, {});
+      print("teste4\n");
 
       // addInitialStmtsToAlgorithms
       dlow = BackendDAEOptimize.addInitialStmtsToAlgorithms(dlow);
@@ -1610,16 +1616,20 @@ algorithm
       relations = FindZeroCrossings.getRelations(dlow);
       sampleZC = FindZeroCrossings.getSamples(dlow);
       zeroCrossings = if ifcpp then listAppend(zeroCrossings, sampleZC) else zeroCrossings;
+      print("teste5\n");
 
       // equation generation for euler, dassl2, rungekutta
       ( uniqueEqIndex, odeEquations, algebraicEquations, allEquations, equationsForZeroCrossings, tempvars,
         equationSccMapping, eqBackendSimCodeMapping, backendMapping) =
             createEquationsForSystems( systs, shared, uniqueEqIndex, {}, {}, {}, {}, zeroCrossings, tempvars, 1, {}, {},backendMapping);
       highestSimEqIndex = uniqueEqIndex;
+      print("teste6\n");
 
       //(remEqLst,paramAsserts) = List.fold1(BackendEquation.equationList(removedEqs), getParamAsserts,knownVars,({},{}));
       //((uniqueEqIndex, removedEquations)) = BackendEquation.traverseEquationArray(BackendEquation.listEquation(remEqLst), traversedlowEqToSimEqSystem, (uniqueEqIndex, {}));
       ((uniqueEqIndex, removedEquations)) = BackendEquation.traverseEquationArray(removedEqs, traversedlowEqToSimEqSystem, (uniqueEqIndex, {}));
+            print("teste7\n");
+
       // Assertions and crap
       // create parameter equations
       partitionsKind = BackendDAEUtil.foldEqSystem(dlow, collectPartitions, {});
@@ -1632,20 +1642,24 @@ algorithm
       (uniqueEqIndex, parameterEquations) = createParameterEquations(uniqueEqIndex, parameterEquations, primaryParameters, allPrimaryParameters);
       //((uniqueEqIndex, paramAssertSimEqs)) = BackendEquation.traverseEquationArray(BackendEquation.listEquation(paramAsserts), traversedlowEqToSimEqSystem, (uniqueEqIndex, {}));
       //parameterEquations = listAppend(parameterEquations,paramAssertSimEqs);
+      print("teste8\n");
 
       ((uniqueEqIndex, algorithmAndEquationAsserts)) = BackendDAEUtil.foldEqSystem(dlow, createAlgorithmAndEquationAsserts, (uniqueEqIndex, {}));
       discreteModelVars = BackendDAEUtil.foldEqSystem(dlow, extractDiscreteModelVars, {});
       makefileParams = createMakefileParams(includeDirs, libs, libPaths,false);
       (delayedExps, maxDelayedExpIndex) = extractDelayedExpressions(dlow);
+      print("teste9\n");
 
       // append removed equation to all equations, since these are actually
       // just the algorithms without outputs
 
       algebraicEquations = listAppend(algebraicEquations, removedEquations::{});
       allEquations = listAppend(allEquations, removedEquations);
+      print("teste10\n");
 
       // state set stuff
       (dlow, stateSets, uniqueEqIndex, tempvars, numStateSets) = createStateSets(dlow, {}, uniqueEqIndex, tempvars);
+      print("teste11\n");
 
       // create model info
       if Flags.isSet(Flags.VECTORIZE) then
@@ -1653,15 +1667,19 @@ algorithm
         //dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.prepareVectorizedDAE1);
         //dlow = BackendDAEUtil.mapEqSystem(dlow, Vectorization.enlargeIteratedArrayVars);
       end if;
+      print("teste12\n");
 
+      dlow = Vectorization.scalarizeBackendDAE(dlow);
       modelInfo = createModelInfo(class_, dlow, functions, {}, numStateSets, fileDir);
       modelInfo = addTempVars(tempvars, modelInfo);
+      print("teste13\n");
 
       // external objects
       extObjInfo = createExtObjInfo(shared);
 
       // update index of zero-Crossings after equations are created
       zeroCrossings = updateZeroCrossEqnIndex(zeroCrossings, eqBackendSimCodeMapping, BackendDAEUtil.daeSize(dlow));
+      print("teste14\n");
 
       // update indexNonLinear in SES_NONLINEAR and count
       SymbolicJacsNLS = {};
@@ -1671,6 +1689,7 @@ algorithm
       SymbolicJacsNLS = listAppend(SymbolicJacsTemp, SymbolicJacsNLS);
       (allEquations, numberofLinearSys, numberofNonLinearSys, numberofMixedSys, numberOfJacobians, SymbolicJacsTemp) = countandIndexAlgebraicLoops(allEquations, numberofLinearSys, numberofNonLinearSys, numberofMixedSys, numberOfJacobians, {});
       SymbolicJacsNLS = listAppend(SymbolicJacsTemp, SymbolicJacsNLS);
+      print("teste15\n");
 
       if Flags.isSet(Flags.DYNAMIC_TEARING_INFO) then
         print("\n\n*********************\n* SimCode Equations *\n*********************\n\ninitialEquations:\n=================\n" + dumpSimEqSystemLst(initialEquations) + "\n");
@@ -1680,6 +1699,7 @@ algorithm
 
       // collect symbolic jacobians from state selection
       (stateSets, SymbolicJacsStateSelect, numberOfJacobians) = indexStateSets(stateSets, {}, numberOfJacobians, {});
+      print("teste16\n");
 
       // generate jacobian or linear model matrices
       (LinearMatrices,uniqueEqIndex) = createJacobianLinearCode(symJacs, modelInfo, uniqueEqIndex);
@@ -1689,6 +1709,7 @@ algorithm
 
       // collect symbolic jacobians in linear loops of the overall jacobians
       (_, numberofLinearSys, numberofNonLinearSys, numberofMixedSys, numberOfJacobians, SymbolicJacs) = countandIndexAlgebraicLoops({}, numberofLinearSys, numberofNonLinearSys, numberofMixedSys, numberOfJacobians, LinearMatrices);
+      print("teste17\n");
 
       jacobianEquations = collectAllJacobianEquations(SymbolicJacsStateSelect, jacobianEquations);
       SymbolicJacsNLS = listAppend(SymbolicJacsNLS, SymbolicJacsStateSelect);
@@ -1701,9 +1722,11 @@ algorithm
       odeEquations = List.mapList1_1(odeEquations, setSystemIndexMap, systemIndexMap);
       algebraicEquations = List.mapList1_1(algebraicEquations, setSystemIndexMap, systemIndexMap);
       numberofEqns = uniqueEqIndex; /* This is a *much* better estimate than the guessed number of equations */
+      print("teste18\n");
 
       // create model info
       modelInfo = addNumEqnsandNumofSystems(modelInfo, numberofEqns, numberofLinearSys, numberofNonLinearSys, numberofMixedSys, numberOfJacobians);
+      print("teste19\n");
 
       // replace div operator with div operator with check of Division by zero
       allEquations = List.map(allEquations, addDivExpErrorMsgtoSimEqSystem);
@@ -1717,6 +1740,7 @@ algorithm
       removedEquations = List.map(removedEquations, addDivExpErrorMsgtoSimEqSystem);
       initialEquations = List.map(initialEquations, addDivExpErrorMsgtoSimEqSystem);
       removedInitialEquations = List.map(removedInitialEquations, addDivExpErrorMsgtoSimEqSystem);
+      print("teste20\n");
 
       odeEquations = makeEqualLengthLists(odeEquations, Config.noProc());
       algebraicEquations = makeEqualLengthLists(algebraicEquations, Config.noProc());
@@ -1724,6 +1748,7 @@ algorithm
       // Filter out empty systems to improve code generation
       odeEquations = List.filterOnFalse(odeEquations, listEmpty);
       algebraicEquations = List.filterOnFalse(algebraicEquations, listEmpty);
+      print("teste21\n");
 
       if Flags.isSet(Flags.EXEC_HASH) then
         print("*** SimCode -> generate cref2simVar hastable: " + realString(clock()) + "\n");
@@ -1736,6 +1761,7 @@ algorithm
 
       backendMapping = setBackendVarMapping(inBackendDAE,crefToSimVarHT,modelInfo,backendMapping);
       //dumpBackendMapping(backendMapping);
+      print("teste22\n");
 
       modelStruct = createFMIModelStructure(symJacs, modelInfo);
 
@@ -1743,6 +1769,7 @@ algorithm
       //print("HASHTABLE MAPPING\n\n");
       //BaseHashTable.dumpHashTable(varToArrayIndexMapping);
       //print("END MAPPING\n\n");
+      print("teste23\n");
 
       simCode = SimCode.SIMCODE(modelInfo,
                                 {}, // Set by the traversal below...
@@ -2581,17 +2608,22 @@ algorithm
     // single equation
     case (_, _, BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqns), _, (BackendDAE.SINGLEEQUATION(eqn=index, var=vindex)), _, _, _, _, _, _, odeEquations, algebraicEquations, allEquations, equationsforZeroCrossings)
       equation
+        print("its a singel equation1\n");
         eqn = BackendEquation.equationNth1(eqns, index);
         // ignore when equations if we should not generate them
         bwhen = BackendEquation.isWhenEquation(eqn);
         // ignore discrete if we should not generate them
         v = BackendVariable.getVarAt(vars, index);
         _ = BackendVariable.isVarDiscrete(v);
+        print("jojo1\n");
         // block is dynamic, belong in dynamic section
         bdynamic = BackendDAEUtil.blockIsDynamic({index}, stateeqnsmark);
         // block need to evaluate zeroCrossings
         bzceqns = BackendDAEUtil.blockIsDynamic({index}, zceqnsmark);
+                print("jojo2\n");
+
         (equations1, uniqueEqIndex, tempvars) = createEquation(index, vindex, syst, shared, false, iuniqueEqIndex, itempvars);
+        print("jojo3\n");
 
         if listEmpty(equations1) then
         // the component has been skipped
@@ -7227,13 +7259,18 @@ algorithm
   try
     // name = Absyn.pathStringNoQual(class_);
     directory := System.trim(fileDir, "\"");
+    print("bubu0\n");
     vars := createVars(dlow);
+        print("bubu1\n");
+
     SimCodeVar.SIMVARS(stateVars=stateVars, algVars=algVars, discreteAlgVars=discreteAlgVars, intAlgVars=intAlgVars, boolAlgVars=boolAlgVars,
           inputVars=inputVars, outputVars=outputVars, aliasVars=aliasVars, intAliasVars=intAliasVars, boolAliasVars=boolAliasVars,
           paramVars=paramVars, intParamVars=intParamVars, boolParamVars=boolParamVars, stringAlgVars=stringAlgVars,
           stringParamVars=stringParamVars, stringAliasVars=stringAliasVars, extObjVars=extObjVars,
           realOptimizeConstraintsVars=realOptimizeConstraintsVars, realOptimizeFinalConstraintsVars= realOptimizeFinalConstraintsVars) := vars;
     BackendDAE.DAE(shared=BackendDAE.SHARED(info=BackendDAE.EXTRA_INFO(description=description))) := dlow;
+        print("bubu2\n");
+
     nx := listLength(stateVars);
     ny := listLength(algVars);
     ndy := listLength(discreteAlgVars);
@@ -7253,9 +7290,13 @@ algorithm
     next := listLength(extObjVars);
     numOptimizeConstraints := listLength(realOptimizeConstraintsVars);
     numOptimizeFinalConstraints := listLength(realOptimizeFinalConstraintsVars);
+        print("bubu3\n");
+
     varInfo := createVarInfo(dlow, nx, ny, ndy, np, na, next, numOutVars, numInVars,
            ny_int, np_int, na_int, ny_bool, np_bool, na_bool, ny_string, np_string, na_string, numStateSets, numOptimizeConstraints, numOptimizeFinalConstraints);
     maxDer := getHighestDerivation(dlow);
+        print("bubu4\n");
+
     modelInfo := SimCode.MODELINFO(class_, description, directory, varInfo, vars, functions, labels, maxDer);
   else
     Error.addInternalError("createModelInfo failed", sourceInfo());
@@ -7577,26 +7618,34 @@ protected
   BackendDAE.EqSystems systs;
 algorithm
   BackendDAE.DAE(eqs=systs, shared=BackendDAE.SHARED(knownVars=knvars, externalObjects=extvars, aliasVars=aliasVars)) := dlow;
+ print("japjap1\n");
 
   if not Flags.isSet(Flags.NO_START_CALC) then
     systs := List.map1(systs,preCalculateStartValues,knvars);
   end if;
+ print("japjap2\n");
+
 
   /* Extract from variable list */
   ((outVars, _, _)) := List.fold1(List.map(systs, BackendVariable.daeVars), BackendVariable.traverseBackendDAEVars, extractVarsFromList, (SimCodeVar.emptySimVars, aliasVars, knvars));
+ print("japjap3\n");
 
   /* Extract from known variable list */
   ((outVars, _, _)) := BackendVariable.traverseBackendDAEVars(knvars, extractVarsFromList, (outVars, aliasVars, knvars));
+ print("japjap4\n");
 
   /* Extract from removed variable list */
   ((outVars, _, _)) := BackendVariable.traverseBackendDAEVars(aliasVars, extractVarsFromList, (outVars, aliasVars, knvars));
+ print("japjap5\n");
 
   /* Extract from external object list */
   ((outVars, _, _)) := BackendVariable.traverseBackendDAEVars(extvars, extractVarsFromList, (outVars, aliasVars, knvars));
+ print("japjap6\n");
 
   /* sort variables on index */
   outVars := sortSimvars(outVars);
   outVars := if stringEqual(Config.simCodeTarget(), "Cpp") then extendIncompleteArray(outVars) else outVars;
+ print("japjap7\n");
 
   /* Index of algebraic and parameters need to fix due to separation of int Vars*/
   outVars := fixIndex(outVars);
@@ -8331,31 +8380,44 @@ algorithm
       outputVars, aliasVars, intAliasVars, boolAliasVars, paramVars, intParamVars, boolParamVars,
       stringAlgVars, stringParamVars, stringAliasVars, extObjVars, constVars, intConstVars, boolConstVars, stringConstVars, jacobianVars, realOptimizeConstraintsVars,realOptimizeFinalConstraintsVars, mixedArrayVars))
       equation
+        print("kokok1\n");
         stateVars = List.sort(stateVars,simVarCompareByCrefSubsAtEndlLexical);
         derivativeVars = List.sort(derivativeVars,simVarCompareByCrefSubsAtEndlLexical);
         algVars = List.sort(algVars,simVarCompareByCrefSubsAtEndlLexical);
         discreteAlgVars = List.sort(discreteAlgVars,simVarCompareByCrefSubsAtEndlLexical);
+                print("kokok2\n");
+
         intAlgVars = List.sort(intAlgVars,simVarCompareByCrefSubsAtEndlLexical);
         boolAlgVars = List.sort(boolAlgVars,simVarCompareByCrefSubsAtEndlLexical);
         inputVars = List.sort(inputVars,simVarCompareByCrefSubsAtEndlLexical);
         outputVars = List.sort(outputVars,simVarCompareByCrefSubsAtEndlLexical);
+                print("kokok3\n");
+
         aliasVars = List.sort(aliasVars,simVarCompareByCrefSubsAtEndlLexical);
         intAliasVars = List.sort(intAliasVars,simVarCompareByCrefSubsAtEndlLexical);
         boolAliasVars = List.sort(boolAliasVars,simVarCompareByCrefSubsAtEndlLexical);
         paramVars = List.sort(paramVars,simVarCompareByCrefSubsAtEndlLexical);
+                print("kokok4\n");
+
         intParamVars = List.sort(intParamVars,simVarCompareByCrefSubsAtEndlLexical);
         boolParamVars = List.sort(boolParamVars,simVarCompareByCrefSubsAtEndlLexical);
         stringAlgVars = List.sort(stringAlgVars,simVarCompareByCrefSubsAtEndlLexical);
         stringParamVars = List.sort(stringParamVars,simVarCompareByCrefSubsAtEndlLexical);
+                print("kokok5\n");
+
         stringAliasVars = List.sort(stringAliasVars,simVarCompareByCrefSubsAtEndlLexical);
         extObjVars = List.sort(extObjVars,simVarCompareByCrefSubsAtEndlLexical);
         constVars = List.sort(constVars,simVarCompareByCrefSubsAtEndlLexical);
         intConstVars = List.sort(intConstVars,simVarCompareByCrefSubsAtEndlLexical);
         boolConstVars = List.sort(boolConstVars,simVarCompareByCrefSubsAtEndlLexical);
+                print("kokok6\n");
+
         stringConstVars = List.sort(stringConstVars,simVarCompareByCrefSubsAtEndlLexical);
         jacobianVars = List.sort(jacobianVars,simVarCompareByCrefSubsAtEndlLexical);
         realOptimizeConstraintsVars = List.sort(realOptimizeConstraintsVars,simVarCompareByCrefSubsAtEndlLexical);
         realOptimizeFinalConstraintsVars = List.sort(realOptimizeFinalConstraintsVars,simVarCompareByCrefSubsAtEndlLexical);
+                print("kokok7\n");
+
       then SimCodeVar.SIMVARS(stateVars, derivativeVars, algVars, discreteAlgVars, intAlgVars, boolAlgVars, inputVars,
         outputVars, aliasVars, intAliasVars, boolAliasVars, paramVars, intParamVars, boolParamVars,
         stringAlgVars, stringParamVars, stringAliasVars, extObjVars, constVars, intConstVars, boolConstVars, stringConstVars, jacobianVars, realOptimizeConstraintsVars, realOptimizeFinalConstraintsVars, mixedArrayVars);

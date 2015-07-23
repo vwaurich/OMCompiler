@@ -1885,6 +1885,7 @@ algorithm
     case BackendDAE.ALGORITHM(attr=BackendDAE.EQUATION_ATTRIBUTES(kind=kind)) then kind;
     case BackendDAE.COMPLEX_EQUATION(attr=BackendDAE.EQUATION_ATTRIBUTES(kind=kind)) then kind;
     case BackendDAE.IF_EQUATION(attr=BackendDAE.EQUATION_ATTRIBUTES(kind=kind)) then kind;
+    case BackendDAE.FOR_EQUATION(attr=BackendDAE.EQUATION_ATTRIBUTES(kind=kind)) then kind;
     else equation
       Error.addInternalError("BackendEquation.equationKind failed!", sourceInfo());
     then fail();
@@ -2803,6 +2804,16 @@ algorithm
     else false;
   end match;
 end isAlgorithm;
+
+public function isForEquation
+  input BackendDAE.Equation inEqn;
+  output Boolean b;
+algorithm
+  b := match (inEqn)
+    case BackendDAE.FOR_EQUATION() then true;
+    else false;
+  end match;
+end isForEquation;
 
 public function isNotAlgorithm
   input BackendDAE.Equation inEqn;

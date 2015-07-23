@@ -6891,7 +6891,17 @@ protected
 algorithm
   matchingAlgorithm := getMatchingAlgorithm(strmatchingAlgorithm);
   indexReductionMethod := getIndexReductionMethod(strindexReductionMethod);
-  outDAE := causalizeDAE(inDAE,inMatchingOptions,matchingAlgorithm,indexReductionMethod,true);
+  if hasDAEMatching(inDAE) then
+
+    print("HAT MATCHING1\n");
+    outDAE := inDAE;
+        outDAE := causalizeDAE(inDAE,inMatchingOptions,matchingAlgorithm,indexReductionMethod,true);
+
+  else
+      print("HAT KEIN MATCHING1\n");
+
+    outDAE := causalizeDAE(inDAE,inMatchingOptions,matchingAlgorithm,indexReductionMethod,true);
+  end if;
 end transformBackendDAE;
 
 protected function causalizeDAE "
@@ -6909,9 +6919,15 @@ protected
   list<Option<BackendDAE.StructurallySingularSystemHandlerArg>> args;
   Boolean causalized;
 algorithm
-  if Flags.isSet(Flags.VECTORIZE) then
+  if not hasDAEMatching(inDAE) and Flags.isSet(Flags.VECTORIZE) then
+        print("HAT KEIN MATCHING1!\n");
     outDAE := Vectorization.causalizeForEquations(inDAE);
+  elseif hasDAEMatching(inDAE) then
+        print("HAT MATCHING!\n");
+    outDAE := inDAE;
+
   else
+        print("HAT KEIN MATCHING2!\n");
   BackendDAE.DAE(systs,shared) := inDAE;
   // reduce index
   (systs,shared,args,causalized) := mapCausalizeDAE(systs,shared,inMatchingOptions,matchingAlgorithm,stateDeselection,{},{},false);
@@ -8276,6 +8292,18 @@ algorithm
   BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqs, m=m, mT=mT, stateSets=stateSets, partitionKind=partitionKind) := inSyst;
   outSyst := BackendDAE.EQSYSTEM(orderedVars=vars, orderedEqs=eqs, m=m, mT=mT, stateSets=stateSets, matching=matching, partitionKind=partitionKind);
 end setEqSystMatching;
+
+public function removeDAEMatching"deletes the BackendDAE.Matching"
+  input BackendDAE.BackendDAE inDAE;
+  output BackendDAE.BackendDAE outDAE;
+protected
+  BackendDAE.EqSystems eqs;
+  BackendDAE.Shared shared;
+algorithm
+  BackendDAE.DAE(eqs=eqs, shared=shared) := inDAE;
+  eqs := List.map1(eqs,setEqSystMatching,BackendDAE.NO_MATCHING());
+  outDAE := BackendDAE.DAE(eqs,shared);
+end removeDAEMatching;
 
 public function setSharedRemovedEqns
   input BackendDAE.Shared inShared;
