@@ -1989,7 +1989,7 @@ algorithm
 end tearingSelect;
 
 
-protected function deleteNegativeEntries
+public function deleteNegativeEntries
  "deletes all negative entries from incidence matrix, works with Array.map1, needed for proper Cellier-Tearing
   author: ptaeuber FHB 2014-01"
   input list<Integer> rowIn;

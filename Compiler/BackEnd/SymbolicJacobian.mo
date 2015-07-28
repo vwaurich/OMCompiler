@@ -145,22 +145,22 @@ protected
   BackendDAE.Var dummyVar;
   BackendDAE.Variables v;
 algorithm
-  BackendDAE.DAE(eqs = eqs) := inBackendDAE;
-
-  // prepare a DAE
-  DAE := BackendDAEUtil.copyBackendDAE(inBackendDAE);
-  DAE := BackendDAEOptimize.collapseIndependentBlocks(DAE);
-  DAE := BackendDAEUtil.transformBackendDAE(DAE, SOME((BackendDAE.NO_INDEX_REDUCTION(), BackendDAE.EXACT())), NONE(), NONE());
-
-  // get states for DAE
-  BackendDAE.DAE(eqs = {BackendDAE.EQSYSTEM(orderedVars = v)}, shared=shared) := DAE;
-  states := BackendVariable.getAllStateVarFromVariables(v);
-
-  // generate sparse pattern
-  (sparsePattern, coloredCols) := generateSparsePattern(DAE, states, states);
-  shared := addBackendDAESharedJacobianSparsePattern(sparsePattern, coloredCols, BackendDAE.SymbolicJacobianAIndex, shared);
-
-  outBackendDAE := BackendDAE.DAE(eqs, shared);
+  if not Flags.isSet(Flags.VECTORIZE) then
+    BackendDAE.DAE(eqs = eqs) := inBackendDAE;
+	  // prepare a DAE
+	  DAE := BackendDAEUtil.copyBackendDAE(inBackendDAE);
+	  DAE := BackendDAEOptimize.collapseIndependentBlocks(DAE);
+	  DAE := BackendDAEUtil.transformBackendDAE(DAE, SOME((BackendDAE.NO_INDEX_REDUCTION(), BackendDAE.EXACT())), NONE(), NONE());
+	  // get states for DAE
+	  BackendDAE.DAE(eqs = {BackendDAE.EQSYSTEM(orderedVars = v)}, shared=shared) := DAE;
+	  states := BackendVariable.getAllStateVarFromVariables(v);
+	  // generate sparse pattern
+	  (sparsePattern, coloredCols) := generateSparsePattern(DAE, states, states);
+	  shared := addBackendDAESharedJacobianSparsePattern(sparsePattern, coloredCols, BackendDAE.SymbolicJacobianAIndex, shared);
+	  outBackendDAE := BackendDAE.DAE(eqs, shared);
+  else
+    outBackendDAE := inBackendDAE;
+  end if;
 end detectSparsePatternODE;
 
 // =============================================================================

@@ -81,8 +81,6 @@ protected import HashTableCrToCrEqLst;
 protected import HashTableCrToExp;
 protected import HashTableExpToExp;
 protected import HashTableExpToIndex;
-protected import Vectorization;
-
 
 protected import Array;
 protected import HpcOmEqSystems;
@@ -159,31 +157,27 @@ public function removeSimpleEquations "
   causal systems."
   input BackendDAE.BackendDAE inDAE;
   output BackendDAE.BackendDAE outDAE;
+protected
+  Boolean b;
+  BackendDAE.Shared shared;
 algorithm
-  if BackendDAEUtil.hasDAEMatching(inDAE) then
-    // This case performs "remove simple equations" on a causal system.
-    // Note: It is fine to do some substitutions in order to minimize SCCs, but
-    // alias/known variable vectors may not be touched.
-    outDAE := match(Flags.getConfigString(Flags.REMOVE_SIMPLE_EQUATIONS))
-      case "default" then causal(inDAE);
-      case "causal" then causal(inDAE);
-      case "new" then performAliasEliminationBB(inDAE);
-      else inDAE;
-    end match;
-
-    outDAE := fixAliasVars(outDAE) "workaround for #3323";
-    outDAE := fixAliasVarsCausal(inDAE, outDAE);
+  BackendDAE.DAE(shared=shared) := inDAE;
+  if BackendDAEUtil.isInitializationDAE(shared) then
+	  b := BackendDAEUtil.hasDAEMatching(inDAE);
+	  // This case performs "remove simple equations" on a causal system.
+	  // Note: It is fine to do some substitutions in order to minimize SCCs, but
+	  // alias/known variable vectors may not be touched.
+	  outDAE := match(Flags.getConfigString(Flags.REMOVE_SIMPLE_EQUATIONS))
+		  case "default" then if b then causal(inDAE) else fastAcausal(inDAE);
+		  case "causal" then causal(inDAE);
+		  case "fastAcausal" then fastAcausal(inDAE);
+		  case "allAcausal" then allAcausal(inDAE);
+		  case "new" then performAliasEliminationBB(inDAE);
+		  else inDAE;
+	  end match;
+	  outDAE := fixAliasVars(outDAE) "workaround for #3323";
   else
-    // This case performs "remove simple equations" on an acausal system.
-    outDAE := match(Flags.getConfigString(Flags.REMOVE_SIMPLE_EQUATIONS))
-      case "default" then fastAcausal(inDAE);
-      case "fastAcausal" then fastAcausal(inDAE);
-      case "allAcausal" then allAcausal(inDAE);
-      case "new" then performAliasEliminationBB(inDAE);
-      else inDAE;
-    end match;
-
-    outDAE := fixAliasVars(outDAE) "workaround for #3323";
+    outDAE := inDAE;
   end if;
 end removeSimpleEquations;
 
@@ -537,6 +531,7 @@ protected
   Integer size;
   HashSet.HashSet unReplaceable;
 algorithm
+  print("jo1\n");
   // get the size of the system to set up the replacement hashmap
   size := BackendDAEUtil.daeSize(inDAE);
   size := intMax(BaseHashTable.defaultBucketSize, realInt(realMul(intReal(size), 0.7)));

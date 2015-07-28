@@ -192,20 +192,19 @@ algorithm
   if Flags.isSet(Flags.GRAPHML) then
     HpcOmTaskGraph.dumpBipartiteGraph(initdae, "INITDAE");
   end if;
+      // simplify system
+    initdae := BackendDAEUtil.preOptimizeBackendDAE(initdae, SOME({"removeSimpleEquations"}));
     // now let's solve the system!
     initdae := BackendDAEUtil.mapEqSystem(initdae, solveInitialSystemEqSystem);
-    print("PREOPT\n");
     // transform and optimize DAE
     pastOptModules := BackendDAEUtil.getPostOptModules(SOME({"constantLinearSystem", "tearingSystem", "calculateStrongComponentJacobians", "solveSimpleEquations"}));
     matchingAlgorithm := BackendDAEUtil.getMatchingAlgorithm(NONE());
     daeHandler := BackendDAEUtil.getIndexReductionMethod(NONE());
     initdae := BackendDAEUtil.removeDAEMatching(initdae);
     // solve system
-    print("TRANSFORM\n");
     initdae := BackendDAEUtil.transformBackendDAE(initdae, SOME((BackendDAE.NO_INDEX_REDUCTION(), BackendDAE.EXACT())), NONE(), NONE());
     // simplify system
-    print("POSTOPT\n");
-    //(initdae, Util.SUCCESS()) := BackendDAEUtil.postOptimizeDAE(initdae, pastOptModules, matchingAlgorithm, daeHandler);
+    (initdae, Util.SUCCESS()) := BackendDAEUtil.postOptimizeDAE(initdae, pastOptModules, matchingAlgorithm, daeHandler);
     if Flags.isSet(Flags.DUMP_INITIAL_SYSTEM) then
       BackendDump.dumpBackendDAE(initdae, "solved initial system");
       if Flags.isSet(Flags.ADDITIONAL_GRAPHVIZ_DUMP) then

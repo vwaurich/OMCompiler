@@ -728,6 +728,29 @@ algorithm
   outExp := DAE.CALL(Absyn.IDENT("der"),{inExp},DAE.callAttrBuiltinReal);
 end expDer;
 
+public function isDerCall
+  input DAE.Exp inExp;
+  output Boolean isDer;
+algorithm
+  try
+    DAE.CALL(Absyn.IDENT("der")) := inExp;
+    isDer := true;
+  else
+    isDer := false;
+  end try;
+end isDerCall;
+
+public function getDerExp
+  input DAE.Exp inExp;
+  output DAE.Exp outExp;
+algorithm
+  try
+    DAE.CALL(Absyn.IDENT("der"),expLst={outExp}) := inExp;
+  else
+    outExp := inExp;
+  end try;
+end getDerExp;
+
 public function expAbs
 "author: PA
   Makes the expression absolute. i.e. non-negative."
@@ -11158,6 +11181,38 @@ algorithm
       then false;
   end matchcontinue;
 end isCrefListWithEqualIdents;
+
+public function getAllCrefsFromDer
+  input DAE.Exp inExp;
+  input list<DAE.ComponentRef> crefsIn;
+  output DAE.Exp outExp;
+  output list<DAE.ComponentRef> crefsOut;
+algorithm
+  (outExp,crefsOut) := matchcontinue(inExp,crefsIn)
+    local
+      DAE.ComponentRef cref;
+      DAE.Exp e1,e2;
+      list<DAE.Exp> lst;
+      list<DAE.ComponentRef> crefs;
+  case(DAE.BINARY(exp1=e1,exp2=e2),_)
+    algorithm
+      (_,crefs) := getAllCrefsFromDer(e1,crefsIn);
+      (_,crefs) := getAllCrefsFromDer(e1,crefs);
+    then (inExp,crefs);
+
+  case(DAE.UNARY(exp=e1),_)
+    algorithm
+      (_,crefs) := getAllCrefsFromDer(e1,crefsIn);
+    then (inExp,crefs);
+
+  case(DAE.CALL(path = Absyn.IDENT(name="der"), expLst={DAE.CREF(componentRef=cref)}),_)
+    algorithm
+    then (inExp,cref::crefsIn);
+
+  else
+    then (inExp,crefsIn);
+  end matchcontinue;
+end getAllCrefsFromDer;
 
 protected function traverseExpDerPreStart
 " TODO: REPLACE THIS ABOMINATION WITH A BETTER traverseExpBottomUp

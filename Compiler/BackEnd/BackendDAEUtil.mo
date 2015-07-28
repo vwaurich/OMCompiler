@@ -6891,17 +6891,7 @@ protected
 algorithm
   matchingAlgorithm := getMatchingAlgorithm(strmatchingAlgorithm);
   indexReductionMethod := getIndexReductionMethod(strindexReductionMethod);
-  if hasDAEMatching(inDAE) then
-
-    print("HAT MATCHING1\n");
-    outDAE := inDAE;
-        outDAE := causalizeDAE(inDAE,inMatchingOptions,matchingAlgorithm,indexReductionMethod,true);
-
-  else
-      print("HAT KEIN MATCHING1\n");
-
-    outDAE := causalizeDAE(inDAE,inMatchingOptions,matchingAlgorithm,indexReductionMethod,true);
-  end if;
+  outDAE := causalizeDAE(inDAE,inMatchingOptions,matchingAlgorithm,indexReductionMethod,true);
 end transformBackendDAE;
 
 protected function causalizeDAE "
@@ -6919,31 +6909,23 @@ protected
   list<Option<BackendDAE.StructurallySingularSystemHandlerArg>> args;
   Boolean causalized;
 algorithm
-  if not hasDAEMatching(inDAE) and Flags.isSet(Flags.VECTORIZE) then
-        print("HAT KEIN MATCHING1!\n");
+  	BackendDAE.DAE(systs,shared) := inDAE;
+  if not hasDAEMatching(inDAE) and Flags.isSet(Flags.VECTORIZE)and BackendDAEUtil.isSimulationDAE(shared) then
     outDAE := Vectorization.causalizeForEquations(inDAE);
-  elseif hasDAEMatching(inDAE) then
-        print("HAT MATCHING!\n");
+  elseif hasDAEMatching(inDAE) and Flags.isSet(Flags.VECTORIZE) and BackendDAEUtil.isSimulationDAE(shared) then
     outDAE := inDAE;
-
   else
-        print("HAT KEIN MATCHING2!\n");
-  BackendDAE.DAE(systs,shared) := inDAE;
-  // reduce index
-  (systs,shared,args,causalized) := mapCausalizeDAE(systs,shared,inMatchingOptions,matchingAlgorithm,stateDeselection,{},{},false);
-
-  //SimCodeUtil.execStat("matching");
-  // do late inline
-  outDAE := if dolateinline then BackendInline.lateInlineFunction(BackendDAE.DAE(systs,shared)) else BackendDAE.DAE(systs,shared);
-  // do state selection
-
-  BackendDAE.DAE(systs,shared) := stateDeselectionDAE(causalized,outDAE,args,stateDeselection);
-
-  // sort assigned equations to blt form
-  systs := mapSortEqnsDAE(systs,shared,{});
-
-  outDAE := BackendDAE.DAE(systs,shared);
-  //SimCodeUtil.execStat("sorting");
+     // reduce index
+	  (systs,shared,args,causalized) := mapCausalizeDAE(systs,shared,inMatchingOptions,matchingAlgorithm,stateDeselection,{},{},false);
+	  //SimCodeUtil.execStat("matching");
+	  // do late inline
+	  outDAE := if dolateinline then BackendInline.lateInlineFunction(BackendDAE.DAE(systs,shared)) else BackendDAE.DAE(systs,shared);
+	  // do state selection
+	  BackendDAE.DAE(systs,shared) := stateDeselectionDAE(causalized,outDAE,args,stateDeselection);
+	  // sort assigned equations to blt form
+	  systs := mapSortEqnsDAE(systs,shared,{});
+	  outDAE := BackendDAE.DAE(systs,shared);
+	  //SimCodeUtil.execStat("sorting");
   end if;
 end causalizeDAE;
 

@@ -301,7 +301,54 @@ algorithm
   end if;
   dumpWhenClauseList(whenClauseLst, "When Clauses");
   dumpConstraintList(constraints, "Constraints");
+  dumpSymJacs(symjacs,"Symbolic Jacobians");
 end printShared;
+
+public function dumpSymJacs
+  input BackendDAE.SymbolicJacobians jacs;
+  input String heading;
+protected
+  String name;
+  list<BackendDAE.Var> diffs,resDiffs,allDiffs;
+  tuple<Option<BackendDAE.SymbolicJacobian>, BackendDAE.SparsePattern, BackendDAE.SparseColoring> jacTpl;
+  BackendDAE.SymbolicJacobian jac;
+  BackendDAE.BackendDAE dae;
+  BackendDAE.EqSystems eqs;
+ list<tuple< .DAE.ComponentRef, list< .DAE.ComponentRef>>> colPatt, rowPatt;
+algorithm
+  print(heading+"\n");
+  for jacTpl in jacs loop
+    try
+      (SOME(jac),_,_) := jacTpl;
+      (dae,name,diffs,resDiffs,allDiffs) := jac;
+      BackendDAE.DAE(eqs=eqs) := dae;
+      print("SYMBOLIC JACOBIAN "+name+"\n");
+      //List.map_0(eqs, printEqSystem);
+      //printVarList(diffs);
+      //printVarList(resDiffs);
+      //printVarList(allDiffs);
+    else
+      print("NO SYMBOLIC JACOBIAN\n");
+    end try;
+  (_,(colPatt,rowPatt,_),_) := jacTpl;
+  print("colPattern "); printPattern(colPatt);
+  print("rowPattern ");  printPattern(rowPatt);
+  end for;
+  print("----------------------------\n");
+end dumpSymJacs;
+
+protected function printPattern
+  input list<tuple< .DAE.ComponentRef, list< .DAE.ComponentRef>>> patt;
+protected
+  DAE.ComponentRef cref1;
+  list<DAE.ComponentRef> crefs;
+  tuple< .DAE.ComponentRef, list< .DAE.ComponentRef>> tpl;
+algorithm
+  for tpl in patt loop
+    (cref1,crefs) := tpl;
+    print(ComponentReference.printComponentRefStr(cref1)+" : "+ComponentReference.printComponentRefListStr(crefs)+"\n");
+  end for;
+end printPattern;
 
 public function printClocks
   input array<DAE.ClockKind> clocks;

@@ -155,31 +155,28 @@ algorithm
                                                     extObjCls,
                                                     BackendDAE.SIMULATION(),
                                                     symjacs,inExtraInfo));
-  BackendDAEUtil.checkBackendDAEWithErrorMsg(outBackendDAE);
-  neqStr := intString(BackendDAEUtil.equationSize(eqnarr));
-  nvarStr := intString(BackendVariable.varsSize(vars_1));
-  Error.assertionOrAddSourceMessage(not Flags.isSet(Flags.DUMP_BACKENDDAE_INFO),Error.BACKENDDAEINFO_LOWER,{neqStr,nvarStr},Absyn.dummyInfo);
-  SimCodeUtil.execStat("Generate backend data structure");
 
   if Flags.isSet(Flags.GRAPHML) then
     HpcOmTaskGraph.dumpBipartiteGraph(outBackendDAE, "_flatDAE");
   end if;
+  SimCodeUtil.execStat("Generate backend data structure");
 
-  BackendDump.dumpBackendDAE(outBackendDAE, "before scalarizing");
-
+  //BackendDump.dumpBackendDAE(outBackendDAE, "before scalarizing");
   if Flags.isSet(Flags.VECTORIZE) then
     // removeSimpleEquations in for-equations
     outBackendDAE := Vectorization.removeSimpleEquationsInForEquations(outBackendDAE);
-      BackendDump.dumpBackendDAE(outBackendDAE, "after removeSimpleEquations");
-
+      //BackendDump.dumpBackendDAE(outBackendDAE, "after removeSimpleEquations");
     outBackendDAE := Vectorization.causalizeForEquations(outBackendDAE);
       //BackendDump.dumpBackendDAE(outBackendDAE, "after causalization");
-
     // scalarize everything
-    //outBackendDAE := Vectorization.scalarizeBackendDAE(outBackendDAE);
+   //outBackendDAE := Vectorization.scalarizeBackendDAE(outBackendDAE);
       //BackendDump.dumpBackendDAE(outBackendDAE, "after scalarizing");
-
   end if;
+
+  BackendDAEUtil.checkBackendDAEWithErrorMsg(outBackendDAE);
+  neqStr := intString(BackendDAEUtil.equationSize(eqnarr));
+  nvarStr := intString(BackendVariable.varsSize(vars_1));
+  Error.assertionOrAddSourceMessage(not Flags.isSet(Flags.DUMP_BACKENDDAE_INFO),Error.BACKENDDAEINFO_LOWER,{neqStr,nvarStr},Absyn.dummyInfo);
 
     if Flags.isSet(Flags.GRAPHML) then
     HpcOmTaskGraph.dumpBipartiteGraph(outBackendDAE, "_flat_afterVec_DAE");
