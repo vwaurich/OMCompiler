@@ -1071,6 +1071,28 @@ template globalDataVarDefine(SimVar simVar, String arrayName, Integer offset) "t
     #define $P$PRE<%cref(name)%>__varInfo data->modelData.<%arrayName%>Data[<%intAdd(offset,index)%>].info
 
     >>
+
+  case SIMVAR(arrayCref=SOME(c)) then
+  let tmp = System.tmpTick()
+    <<
+    /* <%crefStrNoUnderscore(c)%> */
+    #define _<%cref(c)%>(i) data->localData[i]-><%arrayName%>[<%intAdd(offset,index)%>]
+    #define <%cref(c)%> _<%cref(c)%>(0)
+    #define $P$PRE<%cref(c)%> data->simulationInfo.<%arrayName%>Pre[<%intAdd(offset,index)%>]
+
+    <%crefMacroSubsAtEndVarNew(c)%>
+
+    /* <%crefStrNoUnderscore(name)%> */
+    #define _<%cref(name)%>(i) data->localData[i]-><%arrayName%>[<%intAdd(offset,index)%>]
+    #define <%cref(name)%> _<%cref(name)%>(0)
+    #define $P$PRE<%cref(name)%> data->simulationInfo.<%arrayName%>Pre[<%intAdd(offset,index)%>]
+    #define $P$ATTRIBUTE<%cref(name)%> data->modelData.<%arrayName%>Data[<%intAdd(offset,index)%>].attribute
+    #define $P$ATTRIBUTE$P$PRE<%cref(name)%> $P$ATTRIBUTE<%cref(name)%>
+    #define <%cref(name)%>__varInfo data->modelData.<%arrayName%>Data[<%intAdd(offset,index)%>].info
+    #define $P$PRE<%cref(name)%>__varInfo data->modelData.<%arrayName%>Data[<%intAdd(offset,index)%>].info
+
+    >>
+
   case SIMVAR(aliasvar=NOALIAS()) then
   let tmp = System.tmpTick()
     <<
