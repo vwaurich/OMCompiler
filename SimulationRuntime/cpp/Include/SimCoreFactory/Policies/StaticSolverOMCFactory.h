@@ -37,7 +37,7 @@ public:
          shared_ptr<ISolver> cvode = createCVode(system,solver_settings);
          return cvode;
      }
-     else if((solvername.compare("ida")==0))
+     if((solvername.compare("ida")==0))
      {
          shared_ptr<ISolver> ida = createIda(system,solver_settings);
          return ida;
