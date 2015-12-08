@@ -166,6 +166,8 @@ ISolver::SOLVERSTATUS RK12::getSolverStatus()
 {
     return (SolverDefaultImplementation::getSolverStatus());
 };
+
+/// Does time integration loop
 void RK12::solve(const SOLVERCALL command)
 {
 
@@ -182,18 +184,14 @@ void RK12::solve(const SOLVERCALL command)
         if (command & ISolver::RECALL)
             _firstStep = true;
 
-
-
         // Reset status flag
         _solverStatus = ISolver::CONTINUE;
 
         while ( _solverStatus & ISolver::CONTINUE && !_interrupt )
         {
-
             // Zuvor wurde assemble aufgerufen und hat funktioniert => RESET IDID
             if(_idid == 5000)
                 _idid = 0;
-
 
             // Call solver
             //-------------
@@ -203,25 +201,23 @@ void RK12::solve(const SOLVERCALL command)
                 _accStps = 0;
 
                 // Get initial values from system, write out initial state vector
-
                 solverOutput(_accStps,_tCurrent,_z,_h);
 
                 // Choose integration method
-
                 if (_RK12Settings->getRK12Method()  == RK12Settings::EULERFORWARD){
                     doRK12Forward();
-            		std::cout<<"do RK12 forward!"<<std::endl;}
+            		std::cout<<"do RK12 forward! "<<std::endl;}
 
                 else if (_RK12Settings->getRK12Method()  == RK12Settings::EULERBACKWARD){
-                    doRK12Backward();
-            		std::cout<<"do RK12 backward!"<<std::endl;}
+
+                	//doRK12Backward();
+            		std::cout<<"do RK12 backward!"<<std::endl;
+                	doRK12();}
 
                 else{
                     doMidpoint();
             		std::cout<<"do RK12 else!"<<std::endl;}
-
             }
-
 
             // Integration was not sucessfull (=0) or was terminated by the user (=1)
             if(_idid != 0 && _idid !=1)
@@ -329,7 +325,119 @@ void RK12::doRK12Forward()
 }
 
 
+void RK12::doRK12()
+{
+	bool 		stepAcc = true;
+	int			numAccSteps = 0;
 
+    double      tNext;													// point of time after another step with step size _h
+    double      maxStepError = 1e-4;									// the max error per step per state
+
+    double
+		*_zPred1 = new double[_dimSys],									//predictor state vector after one FE step
+		*_zDotPred1 = new double[_dimSys],								//state derivatives at zPred1
+		*_zDot0 = new double[_dimSys];									//state dervative at start of time step
+
+    double	*delta_z = new double[_dimSys];								// the error
+
+    while(  _idid == 0 && _solverStatus != USER_STOP )
+    {
+    	stepAcc = true;
+        // save old state vector
+        memcpy(_z0,_z,(int)_dimSys*sizeof(double));
+
+        // adapt last step size
+        if((_tCurrent + _h) > _tEnd)
+            _h = (_tEnd - _tCurrent);
+
+        // new point of time
+        tNext = _tCurrent + _h;
+
+        //calculate system
+        calcFunction(_tCurrent, _z, _zDot0);
+
+        //do a forward euler step as predictor
+        for(int i = 0; i < _dimSys; ++i){
+        	_zPred1[i] = _z[i] + _h * _zDot0[i];
+        }
+
+    	//compute system
+        calcFunction(tNext,_zPred1,_zDotPred1);
+
+        //final modified euler step
+        for(int i = 0; i < _dimSys; ++i){
+        	_z[i] = _z[i] + 0.5*(_h *_zDot0[i] + _h*_zDotPred1[i]);
+        	//calculate error
+        	delta_z[i] = fabs(_zPred1[i]-_z[i]);
+        	if (delta_z[i] >= maxStepError) stepAcc = false;
+        }
+
+        //std::cout<<"TIME: "<<_tCurrent<<"	diff1  "<<_zPred1[0]-_z[0]<<"	diff2	"<<_zPred1[1]-_z[1]<<"	h	"<<_h<< "	Accepted:	"<<stepAcc<<std::endl;
+        //std::cout<<"_zPred1  "<<_zPred1[0]<<"	_z	"<<_z[0]<<std::endl;
+        //std::cout<<"_zPred2  "<<_zPred1[1]<<"	_z	"<<_z[1]<<std::endl;
+
+
+        // step size control
+        ++ _totStps;
+
+        if (!stepAcc) {
+              	//repeat step, reduce step size
+              	_h = _h*0.7;
+                std::cout<<"Reduce step size "<<_h<<std::endl;
+              	numAccSteps = 0;
+                memcpy(_z,_z0,(int)_dimSys*sizeof(double));
+              	tNext = _tCurrent;
+              }
+
+        else {
+		//accepted step
+		++ numAccSteps;
+
+		if (numAccSteps==4) {
+			_h = _h*1.2;
+			std::cout<<"Increase step size "<<_h<<std::endl;
+			numAccSteps = 0;
+		}
+
+        ++ _accStps;
+
+        //write result to right interval boarder vector
+        memcpy(_z1,_z,_dimSys*sizeof(double));
+
+        solverOutput(_accStps,tNext,_z,_h);
+
+        //event handling
+        doMyZeroSearch();
+
+        if (((_tEnd - _tCurrent) < dynamic_cast<ISolverSettings*>(_RK12Settings)->getEndTimeTol()))
+            break;
+
+        if (_zeroStatus ==EQUAL_ZERO && _tZero > -1)   {
+
+        	// found zero crossing -> complete step
+            _firstStep            = true;
+            _hUpLim = dynamic_cast<ISolverSettings*>(_RK12Settings)->getUpperLimit();
+
+            //handle all events that occured at this t
+            //update_events_type update_event = boost::bind(&SolverDefaultImplementation::updateEventState, this);
+            _mixed_system->handleSystemEvents(_events/*,boost::ref(update_event)*/);
+            _event_system->getZeroFunc(_zeroVal);
+            _zeroStatus = EQUAL_ZERO;
+            memcpy(_zeroValLastSuccess,_zeroVal,_dimZeroFunc*sizeof(double));
+        }
+
+        if (_tZero > -1)        {
+            solverOutput(_accStps,_tZero,_z,_h);
+            _tCurrent = _tZero;
+            _tZero=-1;
+        }
+        else        {
+            //_tCurrent += _h;
+            _tCurrent = tNext;
+        }
+    }
+  }
+}
 
 
 

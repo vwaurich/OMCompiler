@@ -59,49 +59,30 @@ public:
     virtual int reportErrorMessage(ostream& messageStream);
     virtual bool stateSelection();
 private:
-    /// (Explizites) RK12-Verfahren 1. Ordnung
+    /// explicit first order euler
     /*
     RK12:
     y_n+1 = y_n + h * f(t_n, y_n)
     */
     void doRK12Forward();
 
-
-    /// Explizite Verfahren 1. und 2. Ordnung
     /*
-    RK12-Cauchy (wie impliziter RK12, aber explizit durch Präd. Korr., 1. Ordnung):
-    y_n+1^P = y_n + h * f(t_n, y_n)
-    y_n+1 = y_n + h * f((t_n+1, y_n+1^P)
-
-    Heun (wie Trapezregel, aber explizit durch Präd. Korr., 2. Ordnung):
-    y_n+1^P = y_n + h * f(t_n, y_n)
-    y_n+1 = y_n + h * 1/2(f(t_n, y_n) + f(t_n+1, y_n+1^P))
-
-    Mod. Heun (siehe Heun):
-    y_n+1^P = y_n + 2/3 * h * f(t_n, y_n)
-    y_n+1 = y_n + h * (1/4*f(t_n, y_n) + 3/4*f((t_n+2/3h), y_n+1^P))
-
-    */
-    /*void doHeun(); */
-
-
-    /// Implizites RK12-Verfahren 1. Ordnung (A-stabil, teilw. auch für instab. Systeme)
-    /*
-    RK12 Rückwärts (wie RK12-Cauchy, ohne Prädiktor Schritt):
+    backward euler (wie Euler-Cauchy, no predictor):
     y_n+1 = y_n + h * f(t_n+1, y_n+1)
-
     */
     void doRK12Backward();
 
-
-    /// Implizite Mittelpunkts- oder Trapezregel 2. Ordnung (A-stabil)
     /*
-    Trapezregel (wie Heun, ohne Prädiktor Schritt):
+    embedded RK12, i.e. explicit euler as predictor and heuns method as corrector
+    */
+    void doRK12();
+
+    /*
+    implicit Heun 2nd Order no predictor
     y_n+1 = y_n + h * 1/2(f(t_n, y_n) + f(t_n+1, y_n+1))
 
     */
     void doMidpoint();
-
 
     /// Encapsulation of determination of right hand side
     void calcFunction(const double& t, const double* z, double* zDot);
@@ -124,21 +105,8 @@ private:
     // gibt die Indizes der Nullstellenfunktion mit Vorzeichenwechsel zurück
     void giveZeroIdx(double *vL,double *vR,int *zeroIdx, int &zeroExist);
 
-
-
-
-    ///// Output routine for dense output (Encapsulates interpolation, calls solverOutput() for output)
-    //void denseout(double* pK1);
-
-    ///// Ausgaberoutine zur dichten Ausgabe für alle Verfahren mit Ordnung > 1
-    ///// (Kapselt die Interpolation, ruft solverOut zur Ausgabe, ruft numberOfRootsBySturm() zur Bestimmung der Anzahl der Nullstellen
-    ///// im aktuellen Ausgabeintervall)
-    //void denseout(double* pK1, double* pK2, double b, double* w1, double* w2, double* w3);
-
-
     /// Berechnung der Jacobimatrix
     void calcJac(double* yHelp, double* _fHelp, const double* _f, double* jac, const bool& flag);
-
 
     // Member variables
     //---------------------------------------------------------------

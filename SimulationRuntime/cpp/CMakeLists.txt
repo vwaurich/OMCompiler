@@ -657,7 +657,7 @@ GET_FILENAME_COMPONENT(libFMUName ${libFMU} NAME)
 
 #set (KLU_LIB ${libKluName})
 set (EULER_LIB ${libEulerName})
-set (RK12_LIB ${libRK12})
+set (RK12_LIB ${libRK12Name})
 set (RTEULER_LIB ${libRTEulerName})
 set (SETTINGSFACTORY_LIB ${libSetFactoryName})
 set (MODELICASYSTEM_LIB ${libModelicaName})
