@@ -185,7 +185,27 @@ algorithm
       HpcOmSimCode.HpcOmData hpcomData;
       HashTableCrIListArray.HashTable varToArrayIndexMapping;
       HashTableCrILst.HashTable varToIndexMapping;
+
+      SimCode.PartitionData partData;
+      list<list<Integer>> partitions;
+      list<list<Integer>> statePartitions;
+
     case (BackendDAE.DAE(eqs=eqs), _, _, _, _,_, _, _, _, _, _, _, _) equation
+      // DO MULTI-RATE-PARTITIONING
+      true =  Flags.isSet(Flags.MULTIRATE_PARTITION);
+      print("do multirate\n");
+      (simCode,(lastEqMappingIdx,equationSccMapping)) =
+          SimCodeUtil.createSimCode( inBackendDAE, inInitDAE, inUseHomotopy, inInitDAE_lambda0, inRemovedInitialEquationLst, inPrimaryParameters, inAllPrimaryParameters, inClassName, filenamePrefix, inString11, functions,
+                                     externalFunctionIncludes, includeDirs, libs,libPaths, simSettingsOpt, recordDecls, literals, args );
+
+      partitions = {{5},{6}};
+      statePartitions = {{1},{2}};
+      partData = SimCode.PARTITIONDATA(2,partitions,statePartitions);
+      simCode.partitionData = partData;
+      then simCode;
+    case (BackendDAE.DAE(eqs=eqs), _, _, _, _,_, _, _, _, _, _, _, _) equation
+      // DO PARALLELIZATION
+
       //Initial System
       //--------------
       //createAndExportInitialSystemTaskGraph(inInitDAE, filenamePrefix);
