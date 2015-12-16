@@ -77,7 +77,7 @@ type JacobianMatrix = tuple<list<JacobianColumn>,                         // col
 
 public constant list<DAE.Exp> listExpLength1 = {DAE.ICONST(0)} "For CodegenC.tpl";
 public constant list<Variable> boxedRecordOutVars = VARIABLE(DAE.CREF_IDENT("",DAE.T_COMPLEX_DEFAULT_RECORD,{}),DAE.T_COMPLEX_DEFAULT_RECORD,NONE(),{},DAE.NON_PARALLEL(),DAE.VARIABLE())::{} "For CodegenC.tpl";
-constant PartitionData emptyPartitionData = PARTITIONDATA(-1,{},{});
+constant PartitionData emptyPartitionData = PARTITIONDATA(-1,{},{},{});
 
 
 uniontype SimCode
@@ -171,7 +171,8 @@ public uniontype PartitionData
   record PARTITIONDATA
     Integer numPartitions;
     list<list<Integer>> partitions; // which equations are assigned to the partitions
-    list<list<Integer>> statePartitions; // which partitions are assigned to the states
+    list<list<Integer>> activatorsForPartitions; // which activators can activate each partition
+    list<Integer> stateToActivators; // which states belong to which activator
   end PARTITIONDATA;
 end PartitionData;
 

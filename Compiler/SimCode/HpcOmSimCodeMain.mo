@@ -187,8 +187,8 @@ algorithm
       HashTableCrILst.HashTable varToIndexMapping;
 
       SimCode.PartitionData partData;
-      list<list<Integer>> partitions;
-      list<list<Integer>> statePartitions;
+      list<list<Integer>> partitions, activatorsForPartitions;
+      list<Integer> stateToActivators;
 
     case (BackendDAE.DAE(eqs=eqs), _, _, _, _,_, _, _, _, _, _, _, _) equation
       // DO MULTI-RATE-PARTITIONING
@@ -199,8 +199,9 @@ algorithm
                                      externalFunctionIncludes, includeDirs, libs,libPaths, simSettingsOpt, recordDecls, literals, args );
 
       partitions = {{5},{6}};
-      statePartitions = {{1},{2}};
-      partData = SimCode.PARTITIONDATA(2,partitions,statePartitions);
+      stateToActivators = {1,2};
+      activatorsForPartitions = {{1},{2}};
+      partData = SimCode.PARTITIONDATA(2,partitions,activatorsForPartitions,stateToActivators);
       simCode.partitionData = partData;
       then simCode;
     case (BackendDAE.DAE(eqs=eqs), _, _, _, _,_, _, _, _, _, _, _, _) equation
