@@ -25,9 +25,8 @@ public:
     /// Enum to choose the integration method
     enum RK12METHOD
     {
-        EULERFORWARD    = 0,    ///< Explicit RK12
-        EULERBACKWARD    = 1,    ///< Implicit RK12
-        MIDPOINT        = 2,        ///< Midpoint rule
+    	STEPSIZECONTROL    = 0,    ///< Explicit RK12
+        MULTIRATE    = 1,    ///< Implicit RK12
 
     };
 
@@ -44,7 +43,7 @@ public:
     Choise of solution method according to RK12METHOD ([0,1,2,3,4,5]; default: 0)
     **/
     virtual unsigned int getRK12Method() =0;
-    virtual  void setRK12Metoh(unsigned int) =0;
+    virtual  void setRK12Method(unsigned int) =0;
     /**
      Choise of method for zero search according to ZEROSEARCHMETHOD ([0,1]; default: 0)
     */

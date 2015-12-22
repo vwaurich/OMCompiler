@@ -9,7 +9,7 @@
 
 RK12Settings::RK12Settings(IGlobalSettings* globalSettings)
 : SolverSettings        (globalSettings)
-, _method                (EULERBACKWARD)
+, _method                (STEPSIZECONTROL)
 , _zeroSearchMethod        (BISECTION)
 , _denseOutput            (true)
 , _useSturmSequence        (false)
@@ -23,7 +23,7 @@ unsigned int RK12Settings::getRK12Method()
 {
     return _method;
 }
-void RK12Settings::setRK12Metoh(unsigned int method)
+void RK12Settings::setRK12Method(unsigned int method)
 {
     _method= method;
 }

@@ -29,7 +29,7 @@ public:
     Choise of solution method according to EULERMETHOD ([0,1,2,3,4,5]; default: 0)
     **/
      virtual unsigned int getRK12Method();
-     virtual  void setRK12Metoh(unsigned int);
+     virtual  void setRK12Method(unsigned int);
     /**
      Choise of method for zero search according to ZEROSEARCHMETHOD ([0,1]; default: 0)
     */

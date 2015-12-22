@@ -59,30 +59,11 @@ public:
     virtual int reportErrorMessage(ostream& messageStream);
     virtual bool stateSelection();
 private:
-    /// explicit first order euler
-    /*
-    RK12:
-    y_n+1 = y_n + h * f(t_n, y_n)
-    */
-    void doRK12Forward();
-
-    /*
-    backward euler (wie Euler-Cauchy, no predictor):
-    y_n+1 = y_n + h * f(t_n+1, y_n+1)
-    */
-    void doRK12Backward();
-
     /*
     embedded RK12, i.e. explicit euler as predictor and heuns method as corrector
     */
     void doRK12();
-
-    /*
-    implicit Heun 2nd Order no predictor
-    y_n+1 = y_n + h * 1/2(f(t_n, y_n) + f(t_n+1, y_n+1))
-
-    */
-    void doMidpoint();
+    void doRK12_stepControl();
 
     /// Encapsulation of determination of right hand side
     void calcFunction(const double& t, const double* z, double* zDot);
@@ -115,7 +96,8 @@ private:
 
     long int
         _dimSys,                                    ///< Temp             - (total) Dimension of systems (=number of ODE)
-        _idid;                                        ///< Input, Output    - Status Flag
+        _idid,										///< Input, Output    - Status Flag
+		_dimParts;                                  ///      				- number of partitions
 
     int
          _outputStp,
@@ -137,7 +119,8 @@ private:
          _h00,
          _h01,
          _h10,
-         _h11;
+         _h11,
+		 _hactive;
 
 
     double
@@ -152,6 +135,9 @@ private:
 
     int
         *_zeroSignIter;                                ///< Temp            - Temporary zeroSign Vector
+
+    bool
+		*_activePartitions;								///<Temp			- boolean vector which partition has to be activated
 
     ISystemProperties* _properties;
     IContinuous* _continuous_system;

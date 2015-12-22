@@ -3668,12 +3668,14 @@ end simulationCppFile;
 
 template partitionInfoInit(Integer numPartitions, Integer numStates, list<Integer> stateActivators)
 ::=
+  let stateActs = (stateActivators |> act hasindex i0 => '_stateActivator[<%i0%>] = <%intSub(act,1)%>;' ;separator="\n")
   <<
   //partitioning of the system, all partitions are active at t0
   _dimPartitions = <%numPartitions%>;
   _partitionActivation = new bool[_dimPartitions]();
-  _stateActivator = (int[<%numStates%>]){<%(stateActivators |> act => act ;separator=" , ")%>};
   memset(_partitionActivation,true,_dimPartitions*sizeof(bool));
+  _stateActivator = new int[<%numStates%>]();
+  <%stateActs%>
   >>
 end partitionInfoInit;
 
@@ -12939,9 +12941,9 @@ if (<%condition%>)
 >>
 end createEvaluatePartitions;
 
-template partitionCondition(list<Integer> states)
+template partitionCondition(list<Integer> partitions)
 ::=
-let bVec = (states |> state =>  "_partitionActivation[" + state + "]" ;separator=" || ")
+let bVec = (partitions |> part =>  "_partitionActivation[" + intSub(part,1) + "]" ;separator=" || ")
 <<
 <%bVec%>
 >>

@@ -33,11 +33,14 @@ RK12::RK12(IMixedSystem* system, ISolverSettings* settings)
     , _h01               (0.0)
     , _h10               (0.0)
     , _h11               (0.0)
+	, _hactive			(0.0)
     , _f0               (NULL)
     , _f1               (NULL)
     ,_zeroTol            (1e-8)
     ,_outputStp(1)
     ,_tZero(-1)
+	,_dimParts 	(0)
+	,_activePartitions	(NULL)
 {
 }
 
@@ -57,6 +60,9 @@ RK12::~RK12()
         delete [] _f0;
     if(_f1)
         delete [] _f1;
+    if(_activePartitions)
+        delete [] _activePartitions;
+
 }
 
 bool RK12::stateSelection()
@@ -79,6 +85,7 @@ void RK12::initialize()
 
     // Dimension of the system (number of variables)
     _dimSys   = _continuous_system->getDimContinuousStates();
+    _dimParts = _continuous_system->getNumPartitions();
 
     // Check system dimension
     if(_dimSys <= 0 || !(_properties->isODE()))
@@ -132,6 +139,14 @@ void RK12::initialize()
     _tZero=-1;
 
     }
+	// partition activation
+	if(_dimParts != -1)
+	{
+		_activePartitions = new bool[_dimParts];
+		memset(_activePartitions,true,_dimParts*sizeof(bool));
+		_hactive = 0.5*_h;
+	}
+
 }
   void RK12::setTimeOut(unsigned int time_out)
   {
@@ -204,18 +219,20 @@ void RK12::solve(const SOLVERCALL command)
                 solverOutput(_accStps,_tCurrent,_z,_h);
 
                 // Choose integration method
-                if (_RK12Settings->getRK12Method()  == RK12Settings::EULERFORWARD){
-                    doRK12Forward();
-            		std::cout<<"do RK12 forward! "<<std::endl;}
+                if (_RK12Settings->getRK12Method()  == RK12Settings::STEPSIZECONTROL){
+                	//doRK12 with global step size and step size control
+            		std::cout<<"do RK12 ! "<<std::endl;
+            		doRK12_stepControl();
+                	}
 
-                else if (_RK12Settings->getRK12Method()  == RK12Settings::EULERBACKWARD){
+                else if (_RK12Settings->getRK12Method()  == RK12Settings::MULTIRATE){
 
-                	//doRK12Backward();
-            		std::cout<<"do RK12 backward!"<<std::endl;
-                	doRK12();}
+                	//doRK12 with multi-rate();
+            		std::cout<<"do RK12 multirate!"<<std::endl;
+                	doRK12();
+                	}
 
                 else{
-                    doMidpoint();
             		std::cout<<"do RK12 else!"<<std::endl;}
             }
 
@@ -243,95 +260,18 @@ void RK12::solve(const SOLVERCALL command)
 }
 
 
-
-void RK12::doRK12Forward()
-{
-    double *k1   = new double[_dimSys];
-    double tHelp;
-
-
-    //while( (_tEnd - _tCurrent) > dynamic_cast<ISolverSettings*>(_RK12Settings)->getEndTimeTol() && _idid == 0)
-    while( _idid == 0 && _solverStatus != USER_STOP)
-    {
-
-        // Letzten Schritt ggf. anpassen
-        if((_tCurrent + _h) > _tEnd)
-            _h = (_tEnd - _tCurrent);
-
-        tHelp = _tCurrent + _h;
-
-        // 1. Stufe
-        calcFunction(_tCurrent, _z, k1);
-
-        // alten Zustandsvektor zwischenspeichern
-        memcpy(_z0,_z,(int)_dimSys*sizeof(double));
-
-
-        // Berechnung des neuen y
-        for(int i = 0; i < _dimSys; ++i)
-            _z[i] += _h * k1[i];
-
-
-        ++ _totStps;
-        ++ _accStps;
-
-
-        memcpy(_z1,_z,_dimSys*sizeof(double));
-
-        /*ToDo stepevent
-        if(dynamic_cast<IStepEvent*>(_system)->isStepEvent())
-        {
-            _zeroStatus = ISolver::EQUAL_ZERO;
-            _tZero = tHelp;
-        }*/
-
-        solverOutput(_accStps,tHelp,_z,_h);
-
-        doMyZeroSearch();
-
-        if (((_tEnd - _tCurrent) < dynamic_cast<ISolverSettings*>(_RK12Settings)->getEndTimeTol()))
-            break;
-
-        if (_zeroStatus ==EQUAL_ZERO && _tZero > -1)    // Nullstelle gefunden --> voller Schritt bis zum Ende
-        {
-            _firstStep            = true;
-            _hUpLim = dynamic_cast<ISolverSettings*>(_RK12Settings)->getUpperLimit();
-
-            //handle all events that occured at this t
-            //update_events_type update_event = boost::bind(&SolverDefaultImplementation::updateEventState, this);
-            _mixed_system->handleSystemEvents(_events/*,boost::ref(update_event)*/);
-            _event_system->getZeroFunc(_zeroVal);
-            _zeroStatus = EQUAL_ZERO;
-            memcpy(_zeroValLastSuccess,_zeroVal,_dimZeroFunc*sizeof(double));
-
-        }
-
-
-        if (_tZero > -1)
-        {
-
-            solverOutput(_accStps,_tZero,_z,_h);
-            _tCurrent = _tZero;
-            _tZero=-1;
-        }
-        else
-        {
-            //_tCurrent += _h;
-            _tCurrent = tHelp;
-        }
-    }
-
-    delete [] k1;
-}
-
-
 void RK12::doRK12()
 {
-	bool 		stepAcc = true;
-	int			numAccSteps = 0;
+	bool
+		stepAcc = true,
+		stepActiveAcc = true,
+		allLatentStepsBad = true;
 
-    double      tNext;													// point of time after another step with step size _h
-    double      maxStepError = 1e-4;									// the max error per step per state
+	int			numAccSteps = 0,
+				numAccActiveSteps = 0;
+
+    double      tNext, tActNext;													// point of time after another step with step size _h
+    double      maxStepError = 1e-5;									// the max error per step per state
 
     double
 		*_zPred1 = new double[_dimSys],									//predictor state vector after one FE step
@@ -340,9 +280,14 @@ void RK12::doRK12()
 
     double	*delta_z = new double[_dimSys];								// the error
 
+    bool
+		*allPartitionsActive = new bool[_dimParts];						// to switch on all partitions
+    memset(allPartitionsActive,true,_dimParts*sizeof(bool));
+
     while(  _idid == 0 && _solverStatus != USER_STOP )
     {
     	stepAcc = true;
+    	allLatentStepsBad = true;
         // save old state vector
         memcpy(_z0,_z,(int)_dimSys*sizeof(double));
 
@@ -353,53 +298,114 @@ void RK12::doRK12()
         // new point of time
         tNext = _tCurrent + _h;
 
-        //calculate system
-        calcFunction(_tCurrent, _z, _zDot0);
 
+        //MAKE A LATENT STEP
+        //------------------
+    	std::cout<<"DO LATENT STEP"<<std::endl;
+		_continuous_system->setPartitionActivation(allPartitionsActive);
+
+        //calculate system
+        calcFunction(_tCurrent, _z0, _zDot0);
         //do a forward euler step as predictor
         for(int i = 0; i < _dimSys; ++i){
-        	_zPred1[i] = _z[i] + _h * _zDot0[i];
+        	_zPred1[i] = _z0[i] + _h * _zDot0[i];
         }
-
     	//compute system
         calcFunction(tNext,_zPred1,_zDotPred1);
-
         //final modified euler step
         for(int i = 0; i < _dimSys; ++i){
-        	_z[i] = _z[i] + 0.5*(_h *_zDot0[i] + _h*_zDotPred1[i]);
+        	_z[i] = _z0[i] + 0.5*(_h *_zDot0[i] + _h*_zDotPred1[i]);
         	//calculate error
         	delta_z[i] = fabs(_zPred1[i]-_z[i]);
         	if (delta_z[i] >= maxStepError) stepAcc = false;
+        	else allLatentStepsBad = false;
         }
 
         //std::cout<<"TIME: "<<_tCurrent<<"	diff1  "<<_zPred1[0]-_z[0]<<"	diff2	"<<_zPred1[1]-_z[1]<<"	h	"<<_h<< "	Accepted:	"<<stepAcc<<std::endl;
         //std::cout<<"_zPred1  "<<_zPred1[0]<<"	_z	"<<_z[0]<<std::endl;
         //std::cout<<"_zPred2  "<<_zPred1[1]<<"	_z	"<<_z[1]<<std::endl;
+        std::cout<<"deltaL_z  "<<"|"<<_h<<"|"<<"  "<<_tCurrent<<"| \t\t"<<delta_z[0]<<" | "<<delta_z[1]<<std::endl;
 
 
-        // step size control
-        ++ _totStps;
+    	//LATENT STEP IS OKAY, MAYBE INCREASE STEP SIZE
+        if (stepAcc) {
+			++ numAccSteps;
+			std::cout<<"TIME: "<<_tCurrent<<"	h  "<<_h<<std::endl;
+				if (numAccSteps==4) {
+					_h = _h*1.5;
+					std::cout<<"Increase step size "<<_h<<std::endl;
+					numAccSteps = 0;
+				}
+			++ _accStps;
+        }
 
-        if (!stepAcc) {
-              	//repeat step, reduce step size
-              	_h = _h*0.7;
-                std::cout<<"Reduce step size "<<_h<<std::endl;
-              	numAccSteps = 0;
-                memcpy(_z,_z0,(int)_dimSys*sizeof(double));
-              	tNext = _tCurrent;
-              }
+    	//ALL LATENT STEPS ARE BAD, REDUCE LATENT STEP SIZE, REPEAT LATENT STEP
+        else if(allLatentStepsBad) {
+        	numAccSteps = 0;
+          	_h = _h*0.5;
+          	numAccSteps = 0;
+            memcpy(_z,_z0,(int)_dimSys*sizeof(double));
+          	tNext = _tCurrent;
+            std::cout<<"REDUCE LATENT STEP SIZE "<<_h<<std::endl;
+        }
 
+		//MAKE AN ACTIVE STEP
         else {
-		//accepted step
-		++ numAccSteps;
+        	numAccSteps = 0;
+			stepActiveAcc = false;
+	        tActNext = _tCurrent + _hactive;
+			//which partitions belong to this errors?
+			while (_tCurrent < tNext) {
 
-		if (numAccSteps==4) {
-			_h = _h*1.2;
-			std::cout<<"Increase step size "<<_h<<std::endl;
-			numAccSteps = 0;
-		}
+				//last step before next latent step
+		        if((_tCurrent + _hactive) > tNext)
+		        	_hactive = (tNext - _tCurrent);
 
-        ++ _accStps;
+				std::cout<<"DO ACTIVE STEP"<<std::endl;
+				//which partitions have to be evaluated
+				for (int i=0;  i<  _dimSys; i++ ){
+					if (delta_z[i] < maxStepError) {
+						//this error is small enough, no need to calc this partition
+						int j = _continuous_system->getActivator(i);
+						_activePartitions[j] = false;
+						}
+					}
+				_continuous_system->setPartitionActivation(_activePartitions);
+				std::cout<<"_activePartitions  \t\t"<<_activePartitions[0]<<" | "<<_activePartitions[1]<<std::endl;
+
+				//repeat active step
+				stepActiveAcc = true;
+				//do a forward euler step as predictor
+				for(int i = 0; i < _dimSys; ++i){
+					_zPred1[i] = _z0[i] + _hactive * _zDot0[i];
+					}
+				//compute system for active euler forward step
+				calcFunction(tActNext,_zPred1,_zDotPred1);
+				//final modified euler step
+				for(int i = 0; i < _dimSys; ++i){
+					_z[i] = _z0[i] + 0.5*(_hactive *_zDot0[i] + _hactive*_zDotPred1[i]);
+					//calculate error
+					delta_z[i] = fabs(_zPred1[i]-_z[i]);
+					if (stepActiveAcc && delta_z[i] >= maxStepError) stepActiveAcc = false;
+					}
+				std::cout<<"deltaAct_z "<<"|"<<_hactive<<"|"<<"	"<<_tCurrent<<"| \t\t"<<delta_z[0]<<" | "<<delta_z[1]<<std::endl;
+
+				//adapt active step size
+				if(!stepActiveAcc) {
+					_hactive = _hactive / 2.0;
+					numAccActiveSteps = 0;
+					}
+				else if (numAccActiveSteps=4) {
+					_hactive = _hactive * 1.5;
+					numAccActiveSteps = 0;
+					}
+
+				_tCurrent = _tCurrent + _hactive;
+			  }
+			}
+
+
+        ++ _totStps;
 
         //write result to right interval boarder vector
         memcpy(_z1,_z,_dimSys*sizeof(double));
@@ -436,402 +442,125 @@ void RK12::doRK12()
             _tCurrent = tNext;
         }
     }
-  }
 }
 
 
-
-
-void RK12::doRK12Backward()
+void RK12::doRK12_stepControl()
 {
-    int         numberOfIterations = 0;
-    double      tHelp;
-    double      nu,
-        theta;
-    double        nu_old = 1e6;
-    long int    dimRHS = 1;                            // Dimension der rechten Seite zur Lösung LGS
+	bool 		stepAcc = true;
+	int			numAccSteps = 0;
+
+    double      tNext;													// point of time after another step with step size _h
+    double      maxStepError = 1e-4;									// the max error per step per state
 
     double
-        *Z        = new double[_dimSys],                // Steigung (1. Stufe)
-        *deltaZ    = new double[_dimSys],                // Hilfsvariable
-        *LSErhs    = new double[_dimSys],                // Hilfsvariale y-Wert
-        *T        = new double[_dimSys*_dimSys],            // Iterationsmatrix
-        *jac    = new double[_dimSys*_dimSys],        // Jacobimatrix
-        *yHelp    = new double[_dimSys],
-        *fHelp  = new double[_dimSys];
+		*_zPred1 = new double[_dimSys],									//predictor state vector after one FE step
+		*_zDotPred1 = new double[_dimSys],								//state derivatives at zPred1
+		*_zDot0 = new double[_dimSys];									//state dervative at start of time step
 
-  long int *pHelp    = new long int[_dimSys];                // Hilfsvariale Pivotisierun
-    memset(pHelp,0,_dimSys*sizeof(long int));
+    double	*delta_z = new double[_dimSys];								// the error
 
     while(  _idid == 0 && _solverStatus != USER_STOP )
     {
+    	stepAcc = true;
+        // save old state vector
+        memcpy(_z0,_z,(int)_dimSys*sizeof(double));
 
-        nu = 1e12;
-        // Letzten Schritt ggf. anpassen
+        // adapt last step size
         if((_tCurrent + _h) > _tEnd)
             _h = (_tEnd - _tCurrent);
 
-        // neue Stelle
-        tHelp = _tCurrent + _h;
+        // new point of time
+        tNext = _tCurrent + _h;
 
-        // Startwerte setzten
-        memset(Z,0,_dimSys*sizeof(double));
-        for (int i=0;i<_dimSys;i++)
-            deltaZ[i] = 1e15;
+        //calculate system
+        calcFunction(_tCurrent, _z, _zDot0);
 
-
-        // alten Zustandsvektor zwischenspeichren
-        //if (_RK12Settings-> getDenseOutput())
-        memcpy(_z0,_z,(int)_dimSys*sizeof(double));
-
-        calcFunction(_tCurrent,_z,_f0);
-        // Jacobimatrix aufstellen
-        if(numberOfIterations == 0)
-            calcJac(yHelp,fHelp,_f0,jac,false);
-        else
-        {
-            /*ToDo
-            if(_RK12Settings->iJacUpdate == 0 )
-            {*/
-            if(numberOfIterations == 1)
-                calcJac(yHelp,fHelp,_f0,jac,false);
-            /*Todo
-            }
-
-            else if(_accStps % _RK12Settings->iJacUpdate == 0)
-            calcJac(yHelp,fHelp,_f0,jac,false);
-            }
-            */
+        //do a forward euler step as predictor
+        for(int i = 0; i < _dimSys; ++i){
+        	_zPred1[i] = _z[i] + _h * _zDot0[i];
         }
-        //Iterationsmatrix aufstellen
-        for(int j=0; j<_dimSys; ++j)
-        {
-            for(int i=0; i<_dimSys; ++i)
-            {
-                if (i==j)
-                    T[i+j*_dimSys] = 1-_h*jac[i+j*_dimSys];
-                else
-                    T[i+j*_dimSys] = -_h*jac[i+j*_dimSys];
-            }
-        }
-
-        // Iteration
-        numberOfIterations = 0;
-        while ( nu*euclidNorm(_dimSys,deltaZ) > _RK12Settings->getIterTol()*1e-3 && _idid == 0)
-        {
-
-            for (int i=0;i<_dimSys;i++)
-                yHelp[i] = _z[i] + Z[i];
-
-            calcFunction(tHelp, yHelp, fHelp);
-            // Rechte Seite des LGS (k_diff)
-            for(int i=0; i<_dimSys; ++i)
-                LSErhs[i] =-Z[i] + _h*fHelp[i];
-
-            // Löse das LGS (delta_Z wird in LSErhs geschrieben)
-             dgesv_(&_dimSys,&dimRHS,T,&_dimSys,pHelp,LSErhs,&_dimSys,&_idid);
-
-            // Konvergenzcheck
-            if (numberOfIterations > 0)
-            {
-                theta = euclidNorm(_dimSys,LSErhs)/euclidNorm(_dimSys,deltaZ);
-                nu = theta/(1-theta);
-            }
-            else
-            {
-                nu = max(nu_old,UROUND);
-            }
-
-            // Neue Iterierte
-            for(int i=0; i<_dimSys; ++i)
-            {
-                Z[i] +=  LSErhs[i];
-            }
-
-            memcpy(deltaZ,LSErhs,_dimSys*sizeof(double));
-
-
-            ++ numberOfIterations;
-
-
-            if (numberOfIterations > 100 )
-                _idid = -5000;
-        }
-
-        if (_idid < 0/*ToDo && _RK12Settings->bContinue*/)
-        {
-            _idid = 0;
-        }
-
-        nu_old = nu;
-
-
-        // Berechnung des neuen y
-        for(int i = 0; i < _dimSys; ++i)
-            _z[i] += Z[i];
-
-        calcFunction(tHelp,_z,_f1);
-        memcpy(_z1,_z,_dimSys*sizeof(double));
-
-        ////Beachtung von kritischen (mit Null initialisierten) Nullstellen
-        //if(_tCurrent == 0.0)
-        //{
-        //    for(int i=0;i<_dimZeroFunc;i++)
-        //    {
-        //        if(_zeroInit[i])
-        //        {
-        //            event_system->checkConditions(i,false);
-        //        }
-        //    }
-        //event_system->saveConditions();
-        //}
-
-        if (_idid != 0)
-             throw ModelicaSimulationError(SOLVER,"RK12::doRK12Backward() error" );
-
-        ++_totStps;
-        ++_accStps;
-
-        solverOutput(_accStps,tHelp,_z,_h);
-        doMyZeroSearch();
-
-        if (((_tEnd - _tCurrent) < dynamic_cast<ISolverSettings*>(_RK12Settings)->getEndTimeTol()))
-            break;
-
-
-        if ((_zeroStatus == ISolver::EQUAL_ZERO) && (_tZero > -1))   // Nullstelle gefunden --> voller Schritt bis zum Ende
-        {
-
-            //_zeroSearchActive    = false;
-            _firstStep            = true;
-
-            // Originale maximale Schrittweite wiederherstellen,
-            // Startschrittweite mit Verhältnis multiplizieren. Dadurch wird zu großer Startschritt vermieden.
-            // Dies kann z.B. bei Diode zu großen rechten Seiten führen.
-            _hUpLim = dynamic_cast<ISolverSettings*>(_RK12Settings)->getUpperLimit();
-
-            //handle all events that occured at this t
-            //update_events_type update_event = boost::bind(&SolverDefaultImplementation::updateEventState, this);
-            _mixed_system->handleSystemEvents(_events/*,boost::ref(update_event)*/);
-             _event_system->getZeroFunc(_zeroVal);
-            _zeroStatus = ISolver::EQUAL_ZERO;
+    	//compute system
+        calcFunction(tNext,_zPred1,_zDotPred1);
+        //final modified euler step
+        for(int i = 0; i < _dimSys; ++i){
+        	_z[i] = _z[i] + 0.5*(_h *_zDot0[i] + _h*_zDotPred1[i]);
+        	//calculate error
+        	delta_z[i] = fabs(_zPred1[i]-_z[i]);
+        	if (stepAcc && delta_z[i] >= maxStepError) stepAcc = false;
 
         }
 
+        //std::cout<<"TIME: "<<_tCurrent<<"	diff1  "<<_zPred1[0]-_z[0]<<"	diff2	"<<_zPred1[1]-_z[1]<<"	h	"<<_h<< "	Accepted:	"<<stepAcc<<std::endl;
+        //std::cout<<"_zPred1  "<<_zPred1[0]<<"	_z	"<<_z[0]<<std::endl;
+        //std::cout<<"_zPred2  "<<_zPred1[1]<<"	_z	"<<_z[1]<<std::endl;
+        std::cout<<"deltaL_z  "<<"|"<<_h<<"|"<<"  "<<_tCurrent<<"| \t\t"<<delta_z[0]<<" | "<<delta_z[1]<<std::endl;
 
-        if (_tZero > -1)
-        {
-
-            solverOutput(_accStps,_tCurrent,_z,_h);
-            _tCurrent = _tZero;
-            _tZero=-1;
-        }else
-        {
-            //_tCurrent += _h;
-            _tCurrent = tHelp;
-        }
-
-    }
-
-
-    delete [] Z;
-    delete [] deltaZ;
-    delete [] LSErhs;
-    delete [] pHelp;
-    delete [] T;
-    delete [] jac;
-    delete [] fHelp;
-
-    delete [] yHelp;
-}
-
-void RK12::doMidpoint()
-{
-    int         numberOfIterations;
-    double      tHelp,
-        nu,
-        theta,
-        nu_old = 1e6,
-        C = 1.5;
-    long int    dimRHS    = 1;                                // Dimension rechte Seite zur Lösung LGS
-
-    double
-        *jac    = new double[_dimSys*_dimSys],        // Jacobimatrix
-        *T        = new double[_dimSys*_dimSys],            // Iterationsmatrix
-        *yHelp    = new double[_dimSys],                    // Hilfsvariable für y
-        *Z        = new double[_dimSys],                    // Hilfsvariable für Stufe
-        *deltaZ    = new double[_dimSys],                    // Hilfsvariable für Stufe
-        *f0        = new double[_dimSys],
-        *LSErhs    = new double[_dimSys],
-        *fHelp    = new double[_dimSys];                    // Hilfsvariable für rechte Seite
-
-    long int  *pHelp    = new long int[_dimSys];                // Hilfsvariale Pivotisierun
-    // Rechte Seite
-    double* k1 = new double[_dimSys];
-
-    while( _idid == 0)
-    {
-        // Letzten Schritt ggf. anpassen
-        if((_tCurrent + _h) > _tEnd)
-            _h = (_tEnd - _tCurrent);
-
-        // neue Stelle
-        tHelp = _tCurrent + _h;
-
-        // Counter initialisieren
-        numberOfIterations = 0;
-
-
-        // alten Zustandsvektor für Dense-Output zwischenspeichern
-        memcpy(_z0,_z,(int)_dimSys*sizeof(double));
-
-
-
-        // Newton-Iteration
-        if(_RK12Settings->getUseNewtonIteration())
-        {
-
-            nu = 1e12;
-            // Initiale rechte Seite in k-Vektor schreiben
-            calcFunction(_tCurrent,_z,f0);
-
-            // Startwerte
-            memset(Z,0,_dimSys*sizeof(double));
-            for (int i=0;i<_dimSys;i++)
-                deltaZ[i] = 1e15;
-
-            // Jacobimatrix
-            calcJac(yHelp,fHelp,f0,jac,true);
-            // T = (E-hAJ)
-            for(int j=0; j<_dimSys; ++j)
-                for(int i=0; i<_dimSys; ++i)
-                    if(i==j)
-                        T[i+j*_dimSys] = 1.0 - C/(C+1)*_h*jac[i+j*_dimSys];
-                    else
-                        T[i+j*_dimSys] = - C/(C+1)*_h*jac[i+j*_dimSys];
-
-
-            // Iteration
-            while ( nu*euclidNorm(_dimSys,deltaZ) > _RK12Settings->getIterTol() && _idid == 0)
-            {
-                for (int i=0;i<_dimSys;i++)
-                    yHelp[i] = _z[i] + Z[i];
-
-                calcFunction(tHelp, yHelp, fHelp);
-
-                // Rechte Seite des LGS (k_diff)
-                for(int i=0; i<_dimSys; ++i)
-                    LSErhs[i] =-Z[i] + C/(C+1)*_h*fHelp[i] + (1-C/(C+1))*_h*f0[i] ;
-
-                // Löse das LGS (delta_Z wird in LSErhs geschrieben)
-                dgesv_(&_dimSys,&dimRHS,T,&_dimSys,pHelp,LSErhs,&_dimSys,&_idid);
-
-                // Konvergenzcheck
-                if (numberOfIterations > 0)
-                {
-                    theta = euclidNorm(_dimSys,LSErhs)/euclidNorm(_dimSys,deltaZ);
-                    nu = theta/(1-theta);
-                }
-                else
-                {
-                    nu = std::max(nu_old,UROUND);
-                }
-
-                // Neue Iterierte
-                for(int i=0; i<_dimSys; ++i)
-                {
-                    Z[i] +=  LSErhs[i];
-                }
-
-                memcpy(deltaZ,LSErhs,_dimSys*sizeof(double));
-
-
-                ++ numberOfIterations;
-
-
-                if (numberOfIterations > 100 )
-                    _idid = -5000;
-            }
-
-            nu_old = nu;
-
-
-            // Berechnung des neuen y
-            for (int i=0;i<_dimSys;i++)
-                yHelp[i] = _z[i] + Z[i];
-
-            calcFunction(tHelp, yHelp, fHelp);
-
-            for(int i = 0; i < _dimSys; ++i)
-            {
-                _z[i]    += _h*(1-C/(C+1))*f0[i] + _h*C/(C+1)*fHelp[i];
-            }
-
-
-        }
-
-        if (_idid != 0)
-             throw ModelicaSimulationError(SOLVER,"RK12::doMidpoint() error");
-
-
+        // step size control
         ++ _totStps;
-        ++ _accStps;
 
-
-        memcpy(_z1,_z,_dimSys*sizeof(double));
-
-        /*Todo Stepevent
-        if(dynamic_cast<IStepEvent*>(_system)->isStepEvent())
-        {
-            _zeroStatus = ISolver::EQUAL_ZERO;
-            _tZero = tHelp;
-        }*/
-
-        solverOutput(_accStps,tHelp,_z,_h);
-        doMyZeroSearch();
-
-        if (((_tEnd - _tCurrent) < dynamic_cast<ISolverSettings*>(_RK12Settings)->getEndTimeTol()))
-            break;
-
-        if (_zeroStatus == EQUAL_ZERO && _tZero > -1)    // Nullstelle gefunden --> voller Schritt bis zum Ende
-        {
-
-            //_zeroSearchActive    = false;
-            //_firstStep            = true;
-
-            // Originale maximale Schrittweite wiederherstellen,
-            // Startschrittweite mit Verhältnis multiplizieren. Dadurch wird zu großer Startschritt vermieden.
-            // Dies kann z.B. bei Diode zu großen rechten Seiten führen.
-            _hUpLim = dynamic_cast<ISolverSettings*>(_RK12Settings)->getUpperLimit();
-
-
-            //update_events_type update_event = boost::bind(&SolverDefaultImplementation::updateEventState, this);
-            _mixed_system->handleSystemEvents(_events/*,boost::ref(update_event)*/);
-             _event_system->getZeroFunc(_zeroVal);
-
+        if (!stepAcc) {
+			//repeat step, reduce step size
+			_h = _h*0.7;
+			//std::cout<<"Reduce step size "<<_h<<std::endl;
+			numAccSteps = 0;
+			memcpy(_z,_z0,(int)_dimSys*sizeof(double));
+			tNext = _tCurrent;
         }
 
+        else {
+			//accepted step
+			++ numAccSteps;
 
-        if (_tZero > -1)
-        {
+			if (numAccSteps==4) {
+				_h = _h*2.0;
+				//std::cout<<"Increase step size "<<_h<<std::endl;
+				numAccSteps = 0;
+			}
+			//std::cout<<"TIME: "<<_tCurrent<<"	h  "<<_h<<std::endl;
 
-            solverOutput(_accStps,_tCurrent,_z,_h);
+			++ _accStps;
 
-        }
+			//write result to right interval boarder vector
+			memcpy(_z1,_z,_dimSys*sizeof(double));
 
-        _tCurrent += _h;
 
+			solverOutput(_accStps,tNext,_z,_h);
+
+			//event handling
+			doMyZeroSearch();
+
+			if (((_tEnd - _tCurrent) < dynamic_cast<ISolverSettings*>(_RK12Settings)->getEndTimeTol()))
+				break;
+
+			if (_zeroStatus ==EQUAL_ZERO && _tZero > -1)   {
+
+				// found zero crossing -> complete step
+				_firstStep            = true;
+				_hUpLim = dynamic_cast<ISolverSettings*>(_RK12Settings)->getUpperLimit();
+
+				//handle all events that occured at this t
+				//update_events_type update_event = boost::bind(&SolverDefaultImplementation::updateEventState, this);
+
+				_mixed_system->handleSystemEvents(_events/*,boost::ref(update_event)*/);
+				_event_system->getZeroFunc(_zeroVal);
+				_zeroStatus = EQUAL_ZERO;
+				memcpy(_zeroValLastSuccess,_zeroVal,_dimZeroFunc*sizeof(double));
+			}
+
+			if (_tZero > -1) {
+				solverOutput(_accStps,_tZero,_z,_h);
+				_tCurrent = _tZero;
+				_tZero=-1;
+			}
+			else {
+				//_tCurrent += _h;
+				_tCurrent = tNext;
+			}
+       }
     }
-    delete    [] jac;
-    delete    [] T;
-    delete    [] yHelp;
-    delete    [] Z;
-    delete    [] deltaZ;
-    delete    [] fHelp;
-    delete    [] f0;
-    delete    [] LSErhs;
-    delete    [] pHelp;
 }
+
 
 
 void RK12::giveZeroVal(const double &t,const double *y,double *zeroValue)
