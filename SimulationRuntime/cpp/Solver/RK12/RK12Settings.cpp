@@ -9,7 +9,7 @@
 
 RK12Settings::RK12Settings(IGlobalSettings* globalSettings)
 : SolverSettings        (globalSettings)
-, _method                (STEPSIZECONTROL)
+, _method                (MULTIRATE)
 , _zeroSearchMethod        (BISECTION)
 , _denseOutput            (true)
 , _useSturmSequence        (false)

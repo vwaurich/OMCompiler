@@ -198,6 +198,40 @@ algorithm
           SimCodeUtil.createSimCode( inBackendDAE, inInitDAE, inUseHomotopy, inInitDAE_lambda0, inRemovedInitialEquationLst, inPrimaryParameters, inAllPrimaryParameters, inClassName, filenamePrefix, inString11, functions,
                                      externalFunctionIncludes, includeDirs, libs,libPaths, simSettingsOpt, recordDecls, literals, args );
 
+      //get SCC to simEqSys-mappping
+      //----------------------------
+      (allComps,_) = HpcOmTaskGraph.getSystemComponents(inBackendDAE);
+      //print("All components size: " + intString(listLength(allComps)) + "\n");
+      highestSccIdx = findHighestSccIdxInMapping(equationSccMapping,-1);
+      compCountPlusDummy = listLength(allComps)+1;
+      equationSccMapping1 = removeDummyStateFromMapping(equationSccMapping);
+      //the mapping can contain a dummy state as first scc
+      equationSccMapping = if intEq(highestSccIdx, compCountPlusDummy) then equationSccMapping1 else equationSccMapping;
+      sccSimEqMapping = convertToSccSimEqMapping(equationSccMapping, listLength(allComps));
+      simeqCompMapping = convertToSimeqCompMapping(equationSccMapping, lastEqMappingIdx);
+      _ = getSimEqIdxSimEqMapping(simCode.allEquations, arrayLength(simeqCompMapping));
+
+      //Get small DAE System (without removed equations)
+      //------------------------------------------------
+      (taskGraph,taskGraphData) = HpcOmTaskGraph.createTaskGraph(inBackendDAE);
+
+      //Create Costs
+      //--------------
+      taskGraphData = HpcOmTaskGraph.createCosts(inBackendDAE, filenamePrefix + "_eqs_prof" , simeqCompMapping, taskGraphData);
+
+      //Get ODE System
+      //--------------
+      taskGraphOde = arrayCopy(taskGraph);
+      taskGraphDataOde = HpcOmTaskGraph.copyTaskGraphMeta(taskGraphData);
+      (taskGraphOde,taskGraphDataOde) = HpcOmTaskGraph.getOdeSystem(taskGraphOde,taskGraphDataOde,inBackendDAE);
+
+
+      fileName = ("taskGraph_MultiRate_"+filenamePrefix+"_ODE.graphml");
+      schedulerInfo = arrayCreate(arrayLength(taskGraphOde), (-1,-1,-1.0));
+      HpcOmTaskGraph.dumpAsGraphMLSccLevel(taskGraphOde, taskGraphDataOde, fileName, "", {}, {}, sccSimEqMapping, schedulerInfo, HpcOmTaskGraph.GRAPHDUMPOPTIONS(false,false,true,true));
+
+
+
       partitions = {{5},{6}};
       stateToActivators = {1,2};
       activatorsForPartitions = {{1},{2}};
@@ -219,6 +253,7 @@ algorithm
                                      externalFunctionIncludes, includeDirs, libs,libPaths, simSettingsOpt, recordDecls, literals, args );
 
       simVarMapping = SimCodeUtil.getSimVarMappingOfBackendMapping(simCode.backendMapping);
+
       //get SCC to simEqSys-mappping
       //----------------------------
       (allComps,_) = HpcOmTaskGraph.getSystemComponents(inBackendDAE);

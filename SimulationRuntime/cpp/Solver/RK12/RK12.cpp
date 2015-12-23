@@ -221,7 +221,7 @@ void RK12::solve(const SOLVERCALL command)
                 // Choose integration method
                 if (_RK12Settings->getRK12Method()  == RK12Settings::STEPSIZECONTROL){
                 	//doRK12 with global step size and step size control
-            		std::cout<<"do RK12 ! "<<std::endl;
+            		std::cout<<"do RK12 step size controlled! "<<std::endl;
             		doRK12_stepControl();
                 	}
 
@@ -301,7 +301,6 @@ void RK12::doRK12()
 
         //MAKE A LATENT STEP
         //------------------
-    	std::cout<<"DO LATENT STEP"<<std::endl;
 		_continuous_system->setPartitionActivation(allPartitionsActive);
 
         //calculate system
@@ -324,16 +323,16 @@ void RK12::doRK12()
         //std::cout<<"TIME: "<<_tCurrent<<"	diff1  "<<_zPred1[0]-_z[0]<<"	diff2	"<<_zPred1[1]-_z[1]<<"	h	"<<_h<< "	Accepted:	"<<stepAcc<<std::endl;
         //std::cout<<"_zPred1  "<<_zPred1[0]<<"	_z	"<<_z[0]<<std::endl;
         //std::cout<<"_zPred2  "<<_zPred1[1]<<"	_z	"<<_z[1]<<std::endl;
-        std::cout<<"deltaL_z  "<<"|"<<_h<<"|"<<"  "<<_tCurrent<<"| \t\t"<<delta_z[0]<<" | "<<delta_z[1]<<std::endl;
+        std::cout<<"LATENT STEP "<<"\t\t | \t\t"<<_h      <<"\t\t | \t\t"<<_tCurrent<<"\t\t | \t\t"<<(delta_z[0] >= maxStepError)<<"\t\t | \t\t"<<(delta_z[1] >= maxStepError)<<std::endl;
 
 
     	//LATENT STEP IS OKAY, MAYBE INCREASE STEP SIZE
         if (stepAcc) {
 			++ numAccSteps;
-			std::cout<<"TIME: "<<_tCurrent<<"	h  "<<_h<<std::endl;
+			//std::cout<<"TIME: "<<_tCurrent<<"	h  "<<_h<<std::endl;
 				if (numAccSteps==4) {
-					_h = _h*1.5;
-					std::cout<<"Increase step size "<<_h<<std::endl;
+					_h = _h*2.0;
+		            std::cout<<"INCREASE LATENT STEP SIZE "<<_h<<std::endl;
 					numAccSteps = 0;
 				}
 			++ _accStps;
@@ -342,7 +341,7 @@ void RK12::doRK12()
     	//ALL LATENT STEPS ARE BAD, REDUCE LATENT STEP SIZE, REPEAT LATENT STEP
         else if(allLatentStepsBad) {
         	numAccSteps = 0;
-          	_h = _h*0.5;
+          	_h = _h/ 2.0;
           	numAccSteps = 0;
             memcpy(_z,_z0,(int)_dimSys*sizeof(double));
           	tNext = _tCurrent;
@@ -351,27 +350,26 @@ void RK12::doRK12()
 
 		//MAKE AN ACTIVE STEP
         else {
-        	numAccSteps = 0;
+        	numAccActiveSteps = 0;
 			stepActiveAcc = false;
 	        tActNext = _tCurrent + _hactive;
+
 			//which partitions belong to this errors?
+			for (int i=0;  i<  _dimSys; i++ ){
+				if (delta_z[i] < maxStepError) {
+					//this error is small enough, no need to calc this partition
+					int j = _continuous_system->getActivator(i);
+					_activePartitions[j] = false;
+					}
+				}
+			_continuous_system->setPartitionActivation(_activePartitions);
+
 			while (_tCurrent < tNext) {
 
 				//last step before next latent step
-		        if((_tCurrent + _hactive) > tNext)
-		        	_hactive = (tNext - _tCurrent);
+		        //if((_tCurrent + _hactive) > tNext)
+		        	//_hactive = (tNext - _tCurrent);
 
-				std::cout<<"DO ACTIVE STEP"<<std::endl;
-				//which partitions have to be evaluated
-				for (int i=0;  i<  _dimSys; i++ ){
-					if (delta_z[i] < maxStepError) {
-						//this error is small enough, no need to calc this partition
-						int j = _continuous_system->getActivator(i);
-						_activePartitions[j] = false;
-						}
-					}
-				_continuous_system->setPartitionActivation(_activePartitions);
-				std::cout<<"_activePartitions  \t\t"<<_activePartitions[0]<<" | "<<_activePartitions[1]<<std::endl;
 
 				//repeat active step
 				stepActiveAcc = true;
@@ -388,16 +386,21 @@ void RK12::doRK12()
 					delta_z[i] = fabs(_zPred1[i]-_z[i]);
 					if (stepActiveAcc && delta_z[i] >= maxStepError) stepActiveAcc = false;
 					}
-				std::cout<<"deltaAct_z "<<"|"<<_hactive<<"|"<<"	"<<_tCurrent<<"| \t\t"<<delta_z[0]<<" | "<<delta_z[1]<<std::endl;
+				std::cout<<"ACTIVE STEP "<<"\t\t | \t\t"<<_hactive<<"\t\t | \t\t"<<_tCurrent<<"\t\t | \t\t"<<(delta_z[0] >= maxStepError)<<"\t\t | \t\t"<<(delta_z[1] >= maxStepError)<<std::endl;
 
 				//adapt active step size
 				if(!stepActiveAcc) {
 					_hactive = _hactive / 2.0;
 					numAccActiveSteps = 0;
+		            std::cout<<"REDUCE ACTIVE STEP SIZE "<<_h<<std::endl;
 					}
-				else if (numAccActiveSteps=4) {
-					_hactive = _hactive * 1.5;
+				else if (numAccActiveSteps == 4) {
+					_hactive = _hactive * 2.0;
 					numAccActiveSteps = 0;
+		            std::cout<<"INCREASE ACTIVE STEP SIZE "<<_h<<std::endl;
+					}
+				else {
+					numAccActiveSteps = numAccActiveSteps+1;
 					}
 
 				_tCurrent = _tCurrent + _hactive;
@@ -491,10 +494,7 @@ void RK12::doRK12_stepControl()
 
         }
 
-        //std::cout<<"TIME: "<<_tCurrent<<"	diff1  "<<_zPred1[0]-_z[0]<<"	diff2	"<<_zPred1[1]-_z[1]<<"	h	"<<_h<< "	Accepted:	"<<stepAcc<<std::endl;
-        //std::cout<<"_zPred1  "<<_zPred1[0]<<"	_z	"<<_z[0]<<std::endl;
-        //std::cout<<"_zPred2  "<<_zPred1[1]<<"	_z	"<<_z[1]<<std::endl;
-        std::cout<<"deltaL_z  "<<"|"<<_h<<"|"<<"  "<<_tCurrent<<"| \t\t"<<delta_z[0]<<" | "<<delta_z[1]<<std::endl;
+        std::cout<<"delta_z "<<"\t\t | \t\t"<<_h      <<"\t\t | \t\t"<<_tCurrent<<"\t\t | \t\t"<<delta_z[0]<<"\t\t | \t\t"<<delta_z[1]<<std::endl;
 
         // step size control
         ++ _totStps;
