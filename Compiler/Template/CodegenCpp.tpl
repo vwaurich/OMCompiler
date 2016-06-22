@@ -12461,16 +12461,24 @@ template handleSystemEvents(list<ZeroCrossing> zeroCrossings, SimCode simCode ,T
     bool clock_event_detected = false;
 
     int iter = 0;
+    //check for clock events
     for(int i =0;i< _dimClock;i++)
 	{
 		if(events[_dimZeroFunc+i] )
 		{
-			if(_simTime +1e-9 > _clockTime[i])
-				_clockCondition[i]=true;
 			clock_event_detected = true;
-			 evaluateAll();
+			break;
 		}
 	}
+	//if there is a single clock event, update all clock conditions
+	if (clock_event_detected){
+        for(int i =0;i< _dimClock;i++){
+        	if(_simTime +1e-9 > _clockTime[i]){
+                _clockCondition[i]=true;
+            }
+        }
+  	    evaluateAll();
+  	}
 
 	if (clock_event_detected) return false;// no event iteration after clock tick handling
 	_callType = IContinuous::DISCRETE;
