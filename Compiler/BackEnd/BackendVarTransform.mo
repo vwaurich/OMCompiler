@@ -1739,7 +1739,8 @@ algorithm
         (stmts1,true) = replaceStatementLst(stmts,repl,inFuncTypeExpExpToBooleanOption,{},false);
         alg = DAE.ALGORITHM_STMTS(stmts1);
         // if all statements are removed, remove the whole algorithm
-        eqns = if not listEmpty(stmts1) then BackendDAE.ALGORITHM(size,alg,source,crefExpand,eqAttr)::inAcc else inAcc;
+        // this is an equation, dont expand the array-elements on the left hand side anymore when counting with CheckModel
+        eqns = if not listEmpty(stmts1) then BackendDAE.ALGORITHM(size,alg,source,DAE.NOT_EXPAND(),eqAttr)::inAcc else inAcc;
       then
         (eqns,true);
 
