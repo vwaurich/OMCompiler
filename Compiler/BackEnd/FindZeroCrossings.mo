@@ -161,7 +161,7 @@ algorithm
       Integer index, indexOrig, size, sizePre;
       BackendDAE.EquationArray equationArray;
       DAE.Algorithm alg_;
-      list<DAE.Statement> stmts, preStmts, allPreStmts, allStmts;
+      list<DAE.Statement> stmts, preStmts;
       HashTableExpToIndex.HashTable ht;
       DAE.Expand crefExpand;
       BackendDAE.EquationAttributes attr;
@@ -179,15 +179,8 @@ algorithm
     case (BackendDAE.ALGORITHM(size=0, alg=alg_, source=source, expand=crefExpand, attr=attr), (equationArray, vars, eqns, index, ht)) algorithm
       DAE.ALGORITHM_STMTS(statementLst=stmts) := alg_;
       size := -index;
-      allPreStmts := {};
-      allStmts := {};
-      for stmt in stmts loop
-        (stmts, preStmts, index) := encapsulateWhenConditions_Algorithms({stmt}, vars, index);
-        allPreStmts := listAppend(preStmts,allPreStmts);
-        allStmts := listAppend(stmts,allStmts);
-      end for;
-      stmts := listReverse(allStmts);
-      sizePre := listLength(allPreStmts);
+      (stmts, preStmts, index) := encapsulateWhenConditions_Statements(stmts, vars, index);
+      sizePre := listLength(preStmts);
       size := size+index-sizePre;
 
       alg_ := DAE.ALGORITHM_STMTS(stmts);
@@ -195,7 +188,7 @@ algorithm
       equationArray := BackendEquation.addEquation(eqn, equationArray);
 
       if sizePre > 0 then
-        alg_ := DAE.ALGORITHM_STMTS(allPreStmts);
+        alg_ := DAE.ALGORITHM_STMTS(preStmts);
         eqn2 := BackendDAE.ALGORITHM(sizePre, alg_, source, crefExpand, attr);
         DoubleEndedList.push_front(eqns, eqn2);
       end if;
@@ -205,7 +198,7 @@ algorithm
     case (BackendDAE.ALGORITHM(size=size, alg=alg_, source=source, expand=crefExpand, attr=attr), (equationArray, vars, eqns, index, ht)) equation
       DAE.ALGORITHM_STMTS(statementLst=stmts) = alg_;
       size = size-index;
-      (stmts, preStmts, index) = encapsulateWhenConditions_Algorithms(stmts, vars, index);
+      (stmts, preStmts, index) = encapsulateWhenConditions_Statements(stmts, vars, index);
       size = size+index;
 
       stmts = listAppend(preStmts, stmts);
@@ -375,89 +368,86 @@ algorithm
   end match;
 end encapsulateWhenConditions_EquationsWithArrayConditions;
 
-protected function encapsulateWhenConditions_Algorithms "author: lochel"
+protected function encapsulateWhenConditions_Statements "author: vwaurich"
   input list<DAE.Statement> inStmts;
+  input DoubleEndedList<BackendDAE.Var> vars;
+  input Integer inIndex;
+  output list<DAE.Statement> outStmts = {};
+  output list<DAE.Statement> outPreStmts = {}; // these are additional statements that should be inserted directly before a STMT_WHEN
+  output Integer outIndex;
+protected
+  Integer index;
+  list<DAE.Statement> stmts, preStmts;
+algorithm
+  index := inIndex;
+  for stmt in inStmts loop
+    (stmts, preStmts, index) := encapsulateWhenConditions_Statement(stmt, vars, index);
+    outPreStmts := listAppend(preStmts,outPreStmts);
+    outStmts := listAppend(stmts,outStmts);
+  end for;
+  outStmts := listReverse(outStmts);
+  outIndex := index;
+end encapsulateWhenConditions_Statements;
+
+protected function encapsulateWhenConditions_Statement "author: lochel"
+  input DAE.Statement inStmt;
   input DoubleEndedList<BackendDAE.Var> vars;
   input Integer inIndex;
   output list<DAE.Statement> outStmts;
   output list<DAE.Statement> outPreStmts; // these are additional statements that should be inserted directly before a STMT_WHEN
   output Integer outIndex;
 algorithm
-  (outStmts, outPreStmts, outIndex) := match inStmts
+  (outStmts, outPreStmts, outIndex) := match inStmt
     local
       DAE.Exp condition;
       DAE.Statement stmt, stmt2, elseWhen;
-      list<DAE.Statement> stmts, rest, stmts1, stmts_, preStmts, preStmts2, elseWhenList;
+      list<DAE.Statement> stmts, stmts1, stmts_, preStmts, preStmts2, elseWhenList;
       Integer index;
       DAE.ElementSource source;
       list<BackendDAE.Var> vars1;
       list<DAE.ComponentRef> conditions;
       Boolean initialCall;
 
-    case {} then ({}, {}, inIndex);
-
     // when statement
-    case DAE.STMT_WHEN(exp=condition, statementLst=stmts1, elseWhen=NONE(), source=source)::rest equation
+    case DAE.STMT_WHEN(exp=condition, statementLst=stmts1, elseWhen=NONE(), source=source) equation
       (condition, vars1, preStmts, index) = encapsulateWhenConditions_Algorithms1(condition, source, inIndex);
       (conditions, initialCall) = BackendDAEUtil.getConditionList(condition);
       DoubleEndedList.push_list_front(vars, vars1);
-
-      if listEmpty(CheckModel.algorithmStatementListOutputs(stmts1, DAE.EXPAND())) then
-        // without outputs
-        (stmts, preStmts2, index) = encapsulateWhenConditions_Algorithms(rest, vars, index);
-        preStmts = listAppend(preStmts, preStmts2);
-        stmts_ = DAE.STMT_WHEN(condition, conditions, initialCall, stmts1, NONE(), source)::stmts;
-      else
-        (stmts, stmts_, index) = encapsulateWhenConditions_Algorithms(rest, vars, index);
-        stmts_ = DAE.STMT_WHEN(condition, conditions, initialCall, stmts1, NONE(), source)::stmts_;
-        stmts_ = listAppend(stmts_, stmts);
-      end if;
+      stmts_ = {DAE.STMT_WHEN(condition, conditions, initialCall, stmts1, NONE(), source)};
     then (stmts_, preStmts, index);
 
     // when - elsewhen statement
-    case (stmt as DAE.STMT_WHEN(exp=condition, statementLst=stmts1, elseWhen=SOME(elseWhen), source=source))::rest equation
+    case (stmt as DAE.STMT_WHEN(exp=condition, statementLst=stmts1, elseWhen=SOME(elseWhen), source=source)) equation
       (condition, vars1, preStmts, index) = encapsulateWhenConditions_Algorithms1(condition, source, inIndex);
       (conditions, initialCall) = BackendDAEUtil.getConditionList(condition);
       DoubleEndedList.push_list_front(vars, vars1);
 
-      (elseWhenList, preStmts2, index) = encapsulateWhenConditions_Algorithms({elseWhen}, vars, index);
+      (elseWhenList, preStmts2, index) = encapsulateWhenConditions_Statement(elseWhen, vars, index);
       elseWhen = List.last(elseWhenList);
 
       if listEmpty(elseWhenList) then
-        (stmts, preStmts, index) = encapsulateWhenConditions_Algorithms(rest, vars, inIndex);
-        stmts_ = stmt::listAppend(preStmts, stmts);
+        stmts_ = {stmt};
       else
         elseWhen = List.last(elseWhenList);
         stmt2 = DAE.STMT_WHEN(condition, conditions, initialCall, stmts1, SOME(elseWhen), source);
         if listEmpty(CheckModel.algorithmStatementListOutputs({stmt2}, DAE.EXPAND())) then
           // without outputs
           preStmts2 = List.stripLast(elseWhenList);
-          preStmts = listAppend(preStmts, preStmts2);
-          (stmts, preStmts2, index) = encapsulateWhenConditions_Algorithms(rest, vars, index);
-          preStmts = listAppend(preStmts, preStmts2);
-          stmts_ = stmt2::stmts;
-        elseif listLength(elseWhenList)==1 then
-          preStmts = listAppend(preStmts, preStmts2);
-          (stmts, stmts_, index) = encapsulateWhenConditions_Algorithms(rest, vars, index);
-          stmts_ = stmt2::listAppend(stmts_, stmts);
-        else
-          (stmts, preStmts, index) = encapsulateWhenConditions_Algorithms(rest, vars, inIndex);
-          stmts = listAppend(preStmts, stmts);
         end if;
+        preStmts = listAppend(preStmts, preStmts2);
+        stmts_ = {stmt2};
       end if;
     then (stmts_, preStmts, index);
 
     // no when statement
-    case stmt::rest equation
-      (stmts, preStmts, index) = encapsulateWhenConditions_Algorithms(rest, vars, inIndex);
-      stmts = listAppend(preStmts, stmts);
-    then (stmt::stmts, {}, index);
+    case stmt equation
+    then ({stmt}, {}, inIndex);
 
     else equation
       Error.addMessage(Error.INTERNAL_ERROR, {"./Compiler/BackEnd/FindZeroCrossings.mo: function encapsulateWhenConditions_Algorithms failed"});
     then fail();
   end match;
-end encapsulateWhenConditions_Algorithms;
+end encapsulateWhenConditions_Statement;
 
 protected function encapsulateWhenConditions_Algorithms1 "author: lochel"
   input DAE.Exp inCondition;
