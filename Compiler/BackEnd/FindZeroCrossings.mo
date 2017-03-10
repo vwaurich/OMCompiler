@@ -201,7 +201,7 @@ algorithm
       (stmts, preStmts, index) = encapsulateWhenConditions_Statements(stmts, vars, index);
       size = size+index;
 
-      stmts = listAppend(preStmts, stmts);
+      //stmts = listAppend(preStmts, stmts);
 
       alg_ = DAE.ALGORITHM_STMTS(stmts);
       eqn = BackendDAE.ALGORITHM(size, alg_, source, crefExpand, attr);
@@ -372,8 +372,8 @@ protected function encapsulateWhenConditions_Statements "author: vwaurich"
   input list<DAE.Statement> inStmts;
   input DoubleEndedList<BackendDAE.Var> vars;
   input Integer inIndex;
-  output list<DAE.Statement> outStmts = {};
-  output list<DAE.Statement> outPreStmts = {}; // these are additional statements that should be inserted directly before a STMT_WHEN
+  output list<DAE.Statement> outStmts = {};  // the updated statements including the inserted preStmts
+  output list<DAE.Statement> outPreStmts = {}; // these are all additional statements that have been inserted directly before a STMT_WHEN
   output Integer outIndex;
 protected
   Integer index;
@@ -384,6 +384,7 @@ algorithm
   for stmt in inStmts loop
     (stmts, preStmts, index) := encapsulateWhenConditions_Statement(stmt, vars, index);
     outPreStmts := listAppend(preStmts,outPreStmts);
+    stmts := listAppend(stmts, preStmts);
     outStmts := listAppend(stmts,outStmts);
   end for;
   outStmts := listReverse(outStmts);
