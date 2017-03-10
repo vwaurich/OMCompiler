@@ -380,6 +380,7 @@ protected
   list<DAE.Statement> stmts, preStmts;
 algorithm
   index := inIndex;
+  //for each statement , the preStmts have to be extracted individually and collected
   for stmt in inStmts loop
     (stmts, preStmts, index) := encapsulateWhenConditions_Statement(stmt, vars, index);
     outPreStmts := listAppend(preStmts,outPreStmts);
@@ -444,7 +445,7 @@ algorithm
     then ({stmt}, {}, inIndex);
 
     else equation
-      Error.addMessage(Error.INTERNAL_ERROR, {"./Compiler/BackEnd/FindZeroCrossings.mo: function encapsulateWhenConditions_Algorithms failed"});
+      Error.addMessage(Error.INTERNAL_ERROR, {"./Compiler/BackEnd/FindZeroCrossings.mo: function encapsulateWhenConditions_Statement failed"});
     then fail();
   end match;
 end encapsulateWhenConditions_Statement;
