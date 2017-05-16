@@ -270,7 +270,7 @@ algorithm
   dumpEquationArray(inShared.initialEqs, "Initial Equations");
   dumpZeroCrossingList(ZeroCrossings.toList(inShared.eventInfo.zeroCrossings), "Zero Crossings");
   dumpZeroCrossingList(DoubleEndedList.toListNoCopyNoClear(inShared.eventInfo.relations), "Relations");
-  if stringEqual(Config.simCodeTarget(), "Cpp") then
+  if (stringEqual(Config.simCodeTarget(), "Cpp") or stringEqual(Config.simCodeTarget(), "osu")) then
     dumpZeroCrossingList(ZeroCrossings.toList(inShared.eventInfo.samples), "Samples");
   else
     dumpTimeEvents(inShared.eventInfo.timeEvents, "Time Events");

@@ -190,7 +190,10 @@ runtimeCPP: CMinpack $(MINGW_EXTRA_LIBS)
 CMAKE_ARGS=$(filter CMAKE_%, $(MAKEFLAGS))
 
 
-runtimeCPPinstall: CMinpack $(MINGW_EXTRA_LIBS) copycppheader omc
+runtimeCPPinstall: CMinpack $(MINGW_EXTRA_LIBS) copycppheader
+	# cpp runtime needs fmilib as shared library
+	test -f 3rdParty/FMIL/build/libfmilib_shared.* || rm -rf 3rdParty/FMIL/build/*
+	$(MAKE)  -f $(defaultMakefileTarget) fmil FMILIB_SHARED="ON"
 	$(MAKE) -C SimulationRuntime/cpp/ -f $(defaultMakefileTarget) CC="$(CC)" CXX="$(CXX)" install ANALYZATION_MODE="$(ANALYZATION_MODE)" $(CMAKE_ARGS) OMBUILDDIR=$(OMBUILDDIR)
 	test ! `uname` = Darwin || install_name_tool -id @rpath/cpp/libOMCppCVode.dylib $(OMBUILDDIR)/$(LIB_OMC)/cpp/libOMCppCVode.dylib
 	test ! `uname` = Darwin || install_name_tool -id @rpath/cpp/libOMCppDataExchange.dylib $(OMBUILDDIR)/$(LIB_OMC)/cpp/libOMCppDataExchange.dylib

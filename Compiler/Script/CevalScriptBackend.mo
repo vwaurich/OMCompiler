@@ -2815,6 +2815,10 @@ algorithm
     case ("Cpp","WIN32")
        then ".bat";
     case ("Cpp","WIN64")
+        then ".bat";
+    case ("osu","WIN64")
+     then ".bat";
+    case ("osu","WIN32")
        then ".bat";
     else System.getExeExt();
   end match;

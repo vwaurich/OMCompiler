@@ -1318,7 +1318,7 @@ algorithm
       DAE.ComponentRef cr;
     case (cr)
       equation
-        if stringEqual(Config.simCodeTarget(), "Cpp") then
+        if (stringEqual(Config.simCodeTarget(), "Cpp") or stringEqual(Config.simCodeTarget(), "osu"))then
           ((subs as (_ :: _))) = crefLastSubs(cr);
         else
           ((subs as (_ :: _))) = crefSubs(cr);
@@ -1982,7 +1982,7 @@ algorithm
 
     case (_) equation
       true = crefIsFirstArrayElt(name);
-      if stringEqual(Config.simCodeTarget(), "Cpp") then
+      if (stringEqual(Config.simCodeTarget(), "Cpp") or stringEqual(Config.simCodeTarget(), "osu")) then
         arrayCrefInner = crefStripLastSubs(name);
       else
         arrayCrefInner = crefStripSubs(name);

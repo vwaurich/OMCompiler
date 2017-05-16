@@ -64,6 +64,7 @@ import CodegenC;
 import CodegenEmbeddedC;
 import CodegenFMU;
 import CodegenFMUCpp;
+import CodegenOSUCpp;
 import CodegenFMUCppHpcom;
 import CodegenAdevs;
 import CodegenSparseFMI;
@@ -648,6 +649,13 @@ algorithm
           generatedObjects := AvlSetString.add(generatedObjects, "OMCpp" + simCode.fileNamePrefix + str);
         end for;
       then ();
+    case "osu"
+      algorithm
+        callTargetTemplatesOSU(simCode);
+        for str in {"CalcHelperMain.o\n",".so\n"} loop
+          generatedObjects := AvlSetString.add(generatedObjects, "OMCpp" + simCode.fileNamePrefix + str);
+        end for;
+      then ();
 
     case "Adevs" equation
       Tpl.tplNoret(CodegenAdevs.translateModel, simCode);
@@ -809,6 +817,18 @@ algorithm
   end if;
 end callTargetTemplatesCPP;
 
+protected function callTargetTemplatesOSU
+  input SimCode.SimCode iSimCode;
+  protected
+  String fmuVersion;
+  String fmuType;
+algorithm
+
+	 fmuVersion:="2.0";
+	 fmuType:="me";
+     Tpl.tplNoret3(CodegenOSUCpp.translateModel, iSimCode, fmuVersion, fmuType);
+end callTargetTemplatesOSU;
+
 protected function callTargetTemplatesFMU
 "Generate target code by passing the SimCode data structure to templates."
   input SimCode.SimCode simCode;
@@ -907,6 +927,7 @@ algorithm
       Option<BackendDAE.InlineData> inlineData;
       list<BackendDAE.Equation> removedInitialEquationLst;
       Real fsize;
+      Boolean symJacBackup;
 
     case (cache, graph, _, (st as GlobalScript.SYMBOLTABLE(ast=p)), filenameprefix, _, _, _) algorithm
       // calculate stuff that we need to create SimCode data structure
@@ -951,6 +972,13 @@ algorithm
         ExecStat.execStat("Serialize dlow");
       end if;
 
+      // activate symolic jacobains for OSI to provide dependence
+      // information and partial derivatives
+      if Config.simCodeTarget() ==  "osu" then
+        symJacBackup := Flags.getConfigBool(Flags.GENERATE_SYMBOLIC_LINEARIZATION);
+        Flags.setConfigBool(Flags.GENERATE_SYMBOLIC_LINEARIZATION, true);
+      end if;
+
       //BackendDump.printBackendDAE(dlow);
       (dlow, initDAE, initDAE_lambda0, inlineData, removedInitialEquationLst) := BackendDAEUtil.getSolvedSystem(dlow,inFileNamePrefix);
       timeBackend := System.realtimeTock(ClockIndexes.RT_CLOCK_BACKEND);
@@ -963,6 +991,11 @@ algorithm
       end if;
 
       (libs, file_dir, timeSimCode, timeTemplates) := generateModelCode(dlow, initDAE, initDAE_lambda0, inlineData, removedInitialEquationLst, p, className, filenameprefix, inSimSettingsOpt, args);
+
+      // reset GENERATE_SYMBOLIC_LINEARIZATION flag
+      if Config.simCodeTarget() ==  "osu" then
+        Flags.setConfigBool(Flags.GENERATE_SYMBOLIC_LINEARIZATION, symJacBackup);
+      end if;
 
       resultValues := {("timeTemplates", Values.REAL(timeTemplates)),
                       ("timeSimCode", Values.REAL(timeSimCode)),

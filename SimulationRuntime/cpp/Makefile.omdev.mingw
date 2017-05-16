@@ -190,21 +190,24 @@ runtimeCPPmsvc: getMSVCversion
 	mv Build_MSVC/tmp/lib/omc/cpp/*.dll Build_MSVC/tmp/lib/omc/cpp/msvc
 	mv Build_MSVC/tmp/lib/omc/cpp/*.lib Build_MSVC/tmp/lib/omc/cpp/msvc
 	mv Build_MSVC_static/tmp/lib/omc/cpp/*.lib Build_MSVC/tmp/lib/omc/cpp/msvc
+	# move msvc simulation executable into subfolder
+	mkdir -p Build_MSVC/tmp/bin/msvc
+	mv Build_MSVC/tmp/bin/*.exe Build_MSVC/tmp/bin/msvc
 
 
 	# copy pdb files
 ifneq ($(BUILDTYPE),Release)
-	cp -u Build_MSVC*/Solver/Newton/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	cp -u Build_MSVC*/Solver/Euler/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	cp -u Build_MSVC*/Core/SimController/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	#cp -u Build_MSVC*/Core/Modelica/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	cp -u Build_MSVC*/runtime/src/Solver/Newton/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	cp -u Build_MSVC*/runtime/src/Solver/Euler/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	cp -u Build_MSVC*/runtime/src/Core/SimController/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	#cp -u Build_MSVC*/runtime/src/Core/Modelica/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
 	#cp -u Build_MSVC/Core/ModelicaExternalC/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	cp -u Build_MSVC*/Core/SimulationSettings/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	cp -u Build_MSVC*/Core/Solver/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	cp -u Build_MSVC*/Core/System/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	#cp -u Build_MSVC*/SimCoreFactory/OMCFactory/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	cp -u Build_MSVC*/Core/DataExchange/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
-	#cp -u Build_MSVC*/Core/Math/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	cp -u Build_MSVC*/runtime/src/Core/SimulationSettings/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	cp -u Build_MSVC*/runtime/src/Core/Solver/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	cp -u Build_MSVC*/runtime/src/Core/System/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	#cp -u Build_MSVC*/runtime/src/SimCoreFactory/OMCFactory/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	cp -u Build_MSVC*/runtime/src/Core/DataExchange/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
+	#cp -u Build_MSVC*/runtime/src/Core/Math/*.pdb Build_MSVC/tmp/lib/omc/cpp/msvc
 endif
 
 

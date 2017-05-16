@@ -1,0 +1,4 @@
+
+OSUSimulation and OSU library which implements the OpenModelica Simulation Interface (OSI) to simulate an fmu/osu
+It is build whith the cpp simulation runtime, see readme SimulationRuntime/cpp/readme
+
