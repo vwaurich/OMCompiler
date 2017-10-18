@@ -407,6 +407,7 @@ public function generateModelCode "
   input String filenamePrefix;
   input Option<SimCode.SimulationSettings> simSettingsOpt;
   input Absyn.FunctionArgs args;
+  input BackendDAE.SymbolicJacobians inFMIDer = {};
   output list<String> libs;
   output String fileDir;
   output Real timeSimCode;
@@ -433,7 +434,7 @@ algorithm
   fileDir := CevalScriptBackend.getFileDir(a_cref, p);
 
   (libs, libPaths, includes, includeDirs, recordDecls, functions, literals) := SimCodeUtil.createFunctions(p, inBackendDAE);
-  simCode := createSimCode(inBackendDAE, inInitDAE, inInitDAE_lambda0, inInlineData, inRemovedInitialEquationLst, className, filenamePrefix, fileDir, functions, includes, includeDirs, libs,libPaths, p, simSettingsOpt, recordDecls, literals, args);
+  simCode := createSimCode(inBackendDAE, inInitDAE, inInitDAE_lambda0, inInlineData, inRemovedInitialEquationLst, className, filenamePrefix, fileDir, functions, includes, includeDirs, libs,libPaths, p, simSettingsOpt, recordDecls, literals, args, inFMIDer=inFMIDer);
   timeSimCode := System.realtimeTock(ClockIndexes.RT_CLOCK_SIMCODE);
   ExecStat.execStat("SimCode");
 
@@ -927,7 +928,9 @@ algorithm
       Option<BackendDAE.InlineData> inlineData;
       list<BackendDAE.Equation> removedInitialEquationLst;
       Real fsize;
-      Boolean symJacBackup;
+
+      DAE.FunctionTree funcs;
+      BackendDAE.SymbolicJacobians fmiDer;
 
     case (cache, graph, _, (st as GlobalScript.SYMBOLTABLE(ast=p)), filenameprefix, _, _, _) algorithm
       // calculate stuff that we need to create SimCode data structure
@@ -972,16 +975,19 @@ algorithm
         ExecStat.execStat("Serialize dlow");
       end if;
 
-      // activate symolic jacobains for OSI to provide dependence
-      // information and partial derivatives
-      if Config.simCodeTarget() ==  "osu" then
-        symJacBackup := Flags.getConfigBool(Flags.GENERATE_SYMBOLIC_LINEARIZATION);
-        Flags.setConfigBool(Flags.GENERATE_SYMBOLIC_LINEARIZATION, true);
-      end if;
-
       //BackendDump.printBackendDAE(dlow);
       (dlow, initDAE, initDAE_lambda0, inlineData, removedInitialEquationLst) := BackendDAEUtil.getSolvedSystem(dlow,inFileNamePrefix);
       timeBackend := System.realtimeTock(ClockIndexes.RT_CLOCK_BACKEND);
+
+      // generate derivatives
+      if Config.simCodeTarget() ==  "osu" then
+        // activate symolic jacobains for fmi 2.0
+        // to provide dependence information and partial derivatives
+        (fmiDer, funcs) := SymbolicJacobian.createFMIModelDerivatives(dlow);
+        dlow := BackendDAEUtil.setFunctionTree(dlow, funcs);
+      else
+        fmiDer := {};
+      end if;
 
       if Flags.isSet(Flags.SERIALIZED_SIZE) then
         serializeNotify(dlow, filenameprefix, "simDAE");
@@ -990,12 +996,7 @@ algorithm
         ExecStat.execStat("Serialize solved system");
       end if;
 
-      (libs, file_dir, timeSimCode, timeTemplates) := generateModelCode(dlow, initDAE, initDAE_lambda0, inlineData, removedInitialEquationLst, p, className, filenameprefix, inSimSettingsOpt, args);
-
-      // reset GENERATE_SYMBOLIC_LINEARIZATION flag
-      if Config.simCodeTarget() ==  "osu" then
-        Flags.setConfigBool(Flags.GENERATE_SYMBOLIC_LINEARIZATION, symJacBackup);
-      end if;
+      (libs, file_dir, timeSimCode, timeTemplates) := generateModelCode(dlow, initDAE, initDAE_lambda0, inlineData, removedInitialEquationLst, p, className, filenameprefix, inSimSettingsOpt, args, fmiDer);
 
       resultValues := {("timeTemplates", Values.REAL(timeTemplates)),
                       ("timeSimCode", Values.REAL(timeSimCode)),
