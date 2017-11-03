@@ -12954,8 +12954,7 @@ algorithm
       String valueReference;
     case (SimCodeVar.SIMVAR(aliasvar = SimCodeVar.NEGATEDALIAS(_)), false, _) then
       getDefaultValueReference(inSimVar, inSimCode.modelInfo.varInfo);
-    case (_, _, "Cpp")
-    case (_, _, "osu")
+    case (_, _, _) guard(stringEqual(Config.simCodeTarget(), "Cpp") or stringEqual(Config.simCodeTarget(), "osu"))
     algorithm
       // resolve aliases to get multi-dimensional arrays right
       // (this should possibly be done in getVarIndexByMapping?)
