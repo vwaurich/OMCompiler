@@ -474,7 +474,7 @@ void SimManager::runSingleProcess()
     dimZeroF = _event_system->getDimZeroFunc();
     zeroVal_new = new double[dimZeroF];
     _timeevent_system->setTime(_tStart);
-    if (_dimtimeevent)
+    if (closestTimeEvent<_tEnd)
     {
         _writeFinalState = true;
         _timeevent_system->computeTimeEventConditions(_tStart);
@@ -511,7 +511,6 @@ void SimManager::runSingleProcess()
     {
         while (closestTimeEvent <= _tEnd)
         {
-
             // Set start time, end time, initial step size
             endTime = closestTimeEvent;//endTime = iter->first;
             _solver->setStartTime(startTime);
@@ -526,26 +525,23 @@ void SimManager::runSingleProcess()
             }
             //prepare next step, starting from last endTime
             startTime = endTime;
-            if (_dimtimeevent)
-            {
-              // Find all time events at the current time and compute next one
-              closestTimeEvent = _timeevent_system->computeNextTimeEvents(startTime);
-              _timeevent_system->computeTimeEventConditions(startTime);
 
-              _event_system->getZeroFunc(zeroVal_new);
-              for (int i = 0; i < _dimZeroFunc; i++)
-              {
-                _events[i] = bool(zeroVal_new[i]);
-              }
-              //handleSystemEvents calls evaluateAll() at some point and evaluates the sampler conditions
-              _mixed_system->handleSystemEvents(_events);
-              // Reset time-events after the evaluation in handleSystemEvents
-              _timeevent_system->resetTimeConditions();
+		    // Find all time events at the current time and compute next one
+		    closestTimeEvent = _timeevent_system->computeNextTimeEvents(startTime);
+		    _timeevent_system->computeTimeEventConditions(startTime);
+		    _event_system->getZeroFunc(zeroVal_new);
+		    for (int i = 0; i < _dimZeroFunc; i++)
+		    {
+	          _events[i] = bool(zeroVal_new[i]);
+		    }
+		    //handleSystemEvents calls evaluateAll() at some point and evaluates the sampler conditions
+		    _mixed_system->handleSystemEvents(_events);
+		    // Reset time-events after the evaluation in handleSystemEvents
+		    _timeevent_system->resetTimeConditions();
 
-              //evaluate all to finish the step
-              _cont_system->evaluateAll(IContinuous::CONTINUOUS);
-              _event_system->saveAll();
-            }
+		    //evaluate all to finish the step
+		    _cont_system->evaluateAll(IContinuous::CONTINUOUS);
+		    _event_system->saveAll();
 
             user_stop = (_solver->getSolverStatus() & ISolver::USER_STOP);
             if (user_stop)
