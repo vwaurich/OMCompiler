@@ -1591,6 +1591,19 @@ algorithm
   end match;
 end equationSource;
 
+public function equationSizeKeepAlgorithmAsOne
+  "Same as equationSize but keeps algorithms as one equation"
+  input BackendDAE.Equation eq;
+  output Integer osize;
+algorithm
+  osize := match(eq)
+  case BackendDAE.ALGORITHM(_)
+    then 1;
+  else
+  then equationSize(eq);
+  end match;
+end equationSizeKeepAlgorithmAsOne;
+
 public function equationSize
   "Retrieve the size from a BackendDAE.BackendDAEequation"
   input BackendDAE.Equation eq;
@@ -1688,6 +1701,16 @@ algorithm
     size := size + equationSize(eqn);
   end for;
 end equationLstSize;
+
+public function equationLstSizeKeepAlgorithmAsOne "author: vwaurich
+Gets the scalar size of the equations. Algorithms are handled as single equations."
+  input list<BackendDAE.Equation> inEqns;
+  output Integer size = 0;
+algorithm
+  for eqn in inEqns loop
+    size := size + equationSizeKeepAlgorithmAsOne(eqn);
+  end for;
+end equationLstSizeKeepAlgorithmAsOne;
 
 public function generateEquation "author Frenkel TUD 2012-12
   helper to generate an equation from lhs and rhs.
