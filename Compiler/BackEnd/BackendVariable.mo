@@ -809,12 +809,14 @@ public function isDiscrete
 "This functions checks if BackendDAE.Var is discrete"
   input DAE.ComponentRef cr;
   input BackendDAE.Variables vars;
-  output Boolean outBoolean;
+  output Boolean outBoolean = true;
 protected
-  BackendDAE.Var v;
+  list<BackendDAE.Var> vLst;
 algorithm
-  (v,_) := getVarSingle(cr,vars);
-  outBoolean := isVarDiscrete(v);
+  (vLst,_) := getVar(cr,vars);
+  for v in vLst loop
+    outBoolean := outBoolean and isVarDiscrete(v);
+  end for;
 end isDiscrete;
 
 public function isVarNonDiscrete

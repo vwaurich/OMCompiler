@@ -2908,7 +2908,7 @@ algorithm
           discVarIdxs := listAppend(idxs, discVarIdxs);
         end if;
       end for;
-  then (discVars,discVarIdxs);
+  then (discVarsOut,discVarIdxs);
   else
     then ({},{});
   end match;
