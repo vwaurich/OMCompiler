@@ -2884,5 +2884,35 @@ algorithm
   end match;
 end getEquationLHS;
 
+public function getDiscreteAlgorithmVars
+"gets all discrete variabels which are solved in the algorithm"
+  input BackendDAE.Equation inEq;
+  input BackendDAE.Variables inVariables;
+  output list<BackendDAE.Var> discVarsOut = {};
+  output list<Integer> discVarIdxs = {};
+protected
+  Boolean hasContinuous;
+  list<DAE.ComponentRef> crLst;
+  list<DAE.Statement> statementLst;
+  list<BackendDAE.Var> discVars;
+  list<Integer> idxs;
+algorithm
+  (discVarsOut,discVarIdxs) := match(inEq)
+  case(BackendDAE.ALGORITHM(alg = DAE.ALGORITHM_STMTS(statementLst)))
+    algorithm
+      crLst := Expression.getLhsCrefsFromStatements(statementLst);
+      for cr in crLst loop
+        if BackendVariable.isDiscrete(cr, inVariables) then
+          (discVars, idxs) := BackendVariable.getVar(cr,inVariables);
+          discVarsOut := listAppend(discVars, discVarsOut);
+          discVarIdxs := listAppend(idxs, discVarIdxs);
+        end if;
+      end for;
+  then (discVars,discVarIdxs);
+  else
+    then ({},{});
+  end match;
+end getDiscreteAlgorithmVars;
+
 annotation(__OpenModelica_Interface="backend");
 end BackendEquation;

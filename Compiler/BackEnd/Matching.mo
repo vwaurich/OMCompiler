@@ -5601,6 +5601,7 @@ algorithm
         m1 = arrayCopy(m);
         m1t = arrayCopy(mt);
         (m1,m1t) = removeEdgesForNoDerivativeFunctionInputs(m1,m1t,isyst,ishared);
+        (m1,m1t) = removeEdgesForDiscreteAlgorithms(m1,m1t,isyst,ishared);
         meqns1 = getEqnsforIndexReduction(unmatched1,ne,m1,m1t,ass1,ass2,inArg);
         if Flags.isSet(Flags.BLT_DUMP) then print("MSS subsets: "+stringDelimitList(List.map(meqns1,Util.intLstString),"\n ")+"\n"); end if;
 
@@ -5632,6 +5633,42 @@ algorithm
 
   end match;
 end matchingExternal;
+
+protected function removeEdgesForDiscreteAlgorithms"author: Waurich TUD 11-2017"
+  input BackendDAE.IncidenceMatrix m;
+  input BackendDAE.IncidenceMatrixT mt;
+  input BackendDAE.EqSystem sys;
+  input BackendDAE.Shared shared;
+  output BackendDAE.IncidenceMatrix mOut;
+  output BackendDAE.IncidenceMatrixT mtOut;
+protected
+  Boolean hasNoDerAnno;
+  Integer idx, varIdx;
+  list<Integer> varIdxs, row;
+  BackendDAE.EquationArray eqs;
+  BackendDAE.Variables vars;
+  DAE.FunctionTree functionTree;
+  list<DAE.ComponentRef> noDerInputs;
+algorithm
+  vars := sys.orderedVars;
+  eqs := sys.orderedEqs;
+  idx := 1;
+  for eq in BackendEquation.equationList(eqs) loop
+    (_,varIdxs) := BackendEquation.getDiscreteAlgorithmVars(eq,vars);
+    //print("remove edges between eq: "+intString(idx)+" and vars "+stringDelimitList(List.map(varIdxs,intString),", ")+"\n");
+    //update m
+    arrayUpdate(m,idx,varIdxs);
+    //update mt
+    for varIdx in varIdxs loop
+      row := arrayGet(mt,varIdx);
+      row := List.deleteMember(row,idx);
+      arrayUpdate(mt,varIdx,row);
+    end for;
+    idx := idx+1;
+  end for;
+  mOut := m;
+  mtOut := mt;
+end removeEdgesForDiscreteAlgorithms;
 
 protected function removeEdgesForNoDerivativeFunctionInputs"when gathering the minimal structurally singular subsets from the unmatches equations,
 some edges dont have to be considered e.g. edges between a function call and an input variable if the input variable will not be derived when deriving the function
